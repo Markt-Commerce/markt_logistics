@@ -1,7 +1,7 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useRouter } from 'expo-router';
-import { apiService } from '../../services/api';
+import apiService from '../../services/api';
 
 export default function QRCodeScreen() {
   const router = useRouter();
