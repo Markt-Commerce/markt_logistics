@@ -1,0 +1,55 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Stack } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, View } from 'react-native';
+
+//SplashScreen.preventAutoHideAsync();
+
+export default function RootLayout() {
+
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    async function restoreToken() {
+      try {
+        const token = await AsyncStorage.getItem('sessionToken');
+        if (token) {
+          setIsAuthenticated(true);
+        }
+        else{
+          setIsLoading(false);
+        }
+      } catch (error) {
+        console.error('Failed to restore token:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    
+    if (isAuthenticated) {
+      SplashScreen.hideAsync();
+      restoreToken();
+    }
+  }, []);
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#2E7D32" />
+      </View>
+    );
+  }
+
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      {isAuthenticated ? (
+        <Stack.Screen name="(delivery)" options={{ headerShown: false }} />
+      ) : (
+        <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
+      )}
+    </Stack>
+  );
+}
