@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import apiService from "../../services/api";
 
-const PRIMARY_COLOR = "#2f7f33";
+const PRIMARY_COLOR = "#e26136";
 const BG_LIGHT = "#f6f8f6";
 
 export default function LoginScreen() {

@@ -5,7 +5,7 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import apiService from '../../services/api';
 
-const PRIMARY_COLOR = '#13ec92';
+const PRIMARY_COLOR = '#e26136';
 const BG_LIGHT = '#f6f8f7';
 
 export default function OrderPreviewScreen() {

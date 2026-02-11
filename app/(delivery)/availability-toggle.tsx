@@ -5,7 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const PRIMARY_COLOR = '#13ec92';
+const PRIMARY_COLOR = '#e26136';
 const BG_LIGHT = '#f6f8f7';
 
 export default function AvailabilityToggleScreen() {

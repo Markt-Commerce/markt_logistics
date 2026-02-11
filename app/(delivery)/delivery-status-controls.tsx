@@ -152,7 +152,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   progressDotActive: {
-    backgroundColor: '#2E7D32',
+    backgroundColor: '#e26136',
   },
   progressDotText: {
     color: '#999',
@@ -164,7 +164,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   actionButton: {
-    backgroundColor: '#2E7D32',
+    backgroundColor: '#e26136',
     paddingVertical: 12,
     borderRadius: 6,
     alignItems: 'center',
@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
   },
   completedText: {
     fontSize: 14,
-    color: '#2E7D32',
+    color: '#e26136',
     fontWeight: '700',
     textAlign: 'center',
     paddingVertical: 12,
