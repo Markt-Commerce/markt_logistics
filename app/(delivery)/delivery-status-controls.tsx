@@ -32,7 +32,7 @@ export default function DeliveryStatusControlsScreen() {
             { text: 'Skip', onPress: () => router.replace('/(delivery)/availability-toggle') },
             {
               text: 'Scan QR',
-              onPress: () => router.push('/(delivery)/qr-code'),
+              //onPress: () => router.push('/(delivery)/qr-code'),
             },
           ]);
         } else {

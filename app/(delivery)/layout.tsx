@@ -9,6 +9,8 @@ export default function DeliveryLayout() {
       <Stack.Screen name="active-delivery-map" options={{ title: 'Delivery Map' }} />
       <Stack.Screen name="delivery-status-controls" options={{ title: 'Update Status' }} />
       <Stack.Screen name="qr-code" options={{ title: 'Scan QR Code' }} />
+      <Stack.Screen name="current-assignments" options={{ title: 'My Assignments' }} />
+      <Stack.Screen name="assignment-details" options={{ title: 'Assignment Details' }} />
     </Stack>
   );
 }

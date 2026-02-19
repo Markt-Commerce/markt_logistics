@@ -157,6 +157,14 @@ export default function AvailabilityToggleScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => router.push('/(delivery)/current-assignments')}
+          >
+            <MaterialIcons name="assignment" size={18} color="#fff" />
+            <Text>VIEW CURRENT ASSIGNMENTS</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[styles.secondaryButton, styles.logoutButton]}
             onPress={handleLogout}
           >

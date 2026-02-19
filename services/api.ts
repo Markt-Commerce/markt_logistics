@@ -1,6 +1,6 @@
 import { Assignment, DeliveryPartner, Location, LoginResponse, Order } from '../types';
 
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = 'https://marktcommerce.com/api/v1/delivery';
 const USE_MOCK = true;
 
 const MOCK_PARTNERS: Record<string, DeliveryPartner> = {
@@ -256,6 +256,72 @@ class ApiService {
       });
     } catch (error) {
       throw new Error('Failed to confirm delivery');
+    }
+  }
+
+  async getActiveAssignments(): Promise<any[]> {
+    if (USE_MOCK) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      return [
+        {
+          assignmentId: 'as_001',
+          orderId: 'ord_001',
+          pickup: { lat: 28.7041, lng: 77.1025 },
+          dropoff: { lat: 28.5244, lng: 77.1855 },
+          distanceMeters: 15000,
+          estimatedEarnings: 125,
+          estimatedDuration: 25,
+          status: 'in_transit',
+          pickupAddress: 'Green Gourmet Market, West 4th St, Manhattan',
+          deliveryAddress: 'Chelsea Gardens Apts, Bldg 4, Apt 12C',
+          sellerName: 'Green Gourmet Market',
+          buyerName: 'John Doe',
+          qrToken: 'frpdha34390293'
+        },
+        {
+          assignmentId: 'as_002',
+          orderId: 'ord_002',
+          pickup: { lat: 28.6139, lng: 77.209 },
+          dropoff: { lat: 28.6245, lng: 77.2163 },
+          distanceMeters: 8000,
+          estimatedEarnings: 85,
+          estimatedDuration: 12,
+          status: 'picked_up',
+          pickupAddress: 'Artisan Bakery & Co, Greenwich Ave',
+          deliveryAddress: 'West Village Lofts, Floor 2, Door 201',
+          sellerName: 'Artisan Bakery & Co',
+          buyerName: 'Jane Smith',
+          qrToken: 'frpdha34390294'
+        },
+      ];
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/delivery/assignments/active`, {
+        headers: { Authorization: `Bearer ${this.sessionToken}` },
+      });
+      const data = await response.json();
+      return data.assignments || [];
+    } catch (error) {
+      throw new Error('Failed to fetch assignments');
+    }
+  }
+
+  async getAssignmentDetails(assignmentId: string): Promise<any> {
+    if (USE_MOCK) {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      const assignments = await this.getActiveAssignments();
+      return assignments.find((a) => a.assignmentId === assignmentId) || null;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/delivery/assignments/${assignmentId}`, {
+        headers: { Authorization: `Bearer ${this.sessionToken}` },
+      });
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      throw new Error('Failed to fetch assignment details');
     }
   }
 }
