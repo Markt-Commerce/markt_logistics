@@ -3,20 +3,45 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import apiService from "../../services/api";
 
 const PRIMARY_COLOR = "#e26136";
 const BG_LIGHT = "#f6f8f6";
+
+const COUNTRIES = [
+  { name: 'Nigeria', code: '+234', flag: '🇳🇬', dialLength: 9 }, //todo: remember to change back to 10
+  { name: 'Ghana', code: '+233', flag: '🇬🇭', dialLength: 9 },
+  { name: 'Kenya', code: '+254', flag: '🇰🇪', dialLength: 9 },
+  { name: 'Senegal', code: '+221', flag: '🇸🇳', dialLength: 9 },
+  { name: 'Ivory Coast', code: '+225', flag: '🇨🇮', dialLength: 8 },
+  { name: 'Cameroon', code: '+237', flag: '🇨🇲', dialLength: 9 },
+  { name: 'South Africa', code: '+27', flag: '🇿🇦', dialLength: 9 },
+  { name: 'Uganda', code: '+256', flag: '🇺🇬', dialLength: 9 },
+  { name: 'Tanzania', code: '+255', flag: '🇹🇿', dialLength: 9 },
+  { name: 'Ethiopia', code: '+251', flag: '🇪🇹', dialLength: 9 },
+  { name: 'Rwanda', code: '+250', flag: '🇷🇼', dialLength: 9 },
+  { name: 'Benin', code: '+229', flag: '🇧🇯', dialLength: 8 },
+  { name: 'Burkina Faso', code: '+226', flag: '🇧🇫', dialLength: 8 },
+  { name: 'Mali', code: '+223', flag: '🇲🇱', dialLength: 8 },
+  { name: 'Niger', code: '+227', flag: '🇳🇪', dialLength: 8 },
+  { name: 'Togo', code: '+228', flag: '🇹🇬', dialLength: 8 },
+  { name: 'Liberia', code: '+231', flag: '🇱🇷', dialLength: 8 },
+  { name: 'Sierra Leone', code: '+232', flag: '🇸🇱', dialLength: 8 },
+  { name: 'Guinea', code: '+224', flag: '🇬🇳', dialLength: 8 },
+  { name: 'DRC', code: '+243', flag: '🇨🇩', dialLength: 9 },
+];
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -25,24 +50,36 @@ export default function LoginScreen() {
   const [showOtpInput, setShowOtpInput] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [otpValues, setOtpValues] = useState(["", "", "", "", "", ""]);
+  const [selectedCountry, setSelectedCountry] = useState(COUNTRIES[0]); // Nigeria by default
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
   const otpInputRefs = useRef<(TextInput | null)[]>([]);
 
-  const validatePhone = (value: string) => /^[0-9]{10}$/.test(value);
+  const validatePhone = (value: string) => value.length === selectedCountry.dialLength;
   const otpComplete = otpValues.every((v) => v !== "");
 
   const handleSendOtp = async () => {
     if (!validatePhone(phone)) {
-      Alert.alert("Invalid Phone", "Please enter a valid 10-digit phone number");
+      Alert.alert("Invalid Phone", `Please enter a valid ${selectedCountry.dialLength}-digit phone number`);
       return;
     }
     setIsLoading(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      Alert.alert(
-        "OTP Sent",
-        "Test OTP: 123456",
-        [{ text: "OK", onPress: () => setShowOtpInput(true) }]
-      );
+      // Combine country code with phone number (without the + sign)
+      const fullPhoneNumber = selectedCountry.code.replace('+', '') + phone;
+      const response = await apiService.sendOtp(fullPhoneNumber);
+      
+      if (response.status === 'success' && response.message) {
+        Alert.alert(
+          "OTP Sent",
+          `OTP has been sent to your your email associated with this phone number.`,
+          [{ text: "OK", onPress: () => setShowOtpInput(true) }]
+        );
+      } else {
+        Alert.alert("Error", "Failed to send OTP. Please try again.");
+      }
+    } catch (error) {
+      Alert.alert("Error", "Failed to send OTP. Please check your phone number and try again.");
+      console.error("Send OTP error:", error);
     } finally {
       setIsLoading(false);
     }
@@ -83,11 +120,12 @@ export default function LoginScreen() {
     }
     setIsLoading(true);
     try {
-      const response = await apiService.login(phone, otp);
-      await AsyncStorage.setItem("sessionToken", response.sessionToken);
+      const response = await apiService.login((selectedCountry.code + phone).replace("+", ""), otp);
+      //await AsyncStorage.setItem("sessionToken", response.sessionToken); // no session token
       await AsyncStorage.setItem("partner", JSON.stringify(response.partner));
       router.replace("/(delivery)/availability-toggle");
     } catch (error) {
+      console.error("Login error:", error);
       Alert.alert("Login Failed", "Invalid credentials");
       setOtpValues(["", "", "", "", "", ""]);
       setOtp("");
@@ -117,23 +155,67 @@ export default function LoginScreen() {
             <View style={styles.formGroup}>
               <Text style={styles.label}>PHONE NUMBER</Text>
               <View style={styles.phoneInputWrapper}>
-                <View style={styles.countryPicker}>
-                  <Text style={styles.countryCode}>🇳🇬</Text>
-                  <Text style={styles.countryCodeText}>+234</Text>
+                <TouchableOpacity
+                  style={styles.countryPicker}
+                  onPress={() => setShowCountryPicker(true)}
+                >
+                  <Text style={styles.countryCode}>{selectedCountry.flag}</Text>
+                  <Text style={styles.countryCodeText}>{selectedCountry.code}</Text>
                   <MaterialIcons name="expand-more" size={16} color="#999" />
-                </View>
+                </TouchableOpacity>
                 <TextInput
                   style={styles.phoneInput}
                   placeholder="0000000000"
                   placeholderTextColor="#ccc"
                   keyboardType="phone-pad"
-                  maxLength={10}
+                  maxLength={selectedCountry.dialLength}
                   value={phone}
                   onChangeText={setPhone}
                   editable={!isLoading}
                 />
               </View>
             </View>
+
+            {/* Country Picker Modal */}
+            <Modal
+              visible={showCountryPicker}
+              transparent={true}
+              animationType="slide"
+              onRequestClose={() => setShowCountryPicker(false)}
+            >
+              <SafeAreaView style={styles.modalContainer}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Select Country</Text>
+                  <TouchableOpacity onPress={() => setShowCountryPicker(false)}>
+                    <MaterialIcons name="close" size={24} color="#1a1a1a" />
+                  </TouchableOpacity>
+                </View>
+                <FlatList
+                  data={COUNTRIES}
+                  keyExtractor={(item) => item.code}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.countryOption}
+                      onPress={() => {
+                        setSelectedCountry(item);
+                        setPhone('');
+                        setShowCountryPicker(false);
+                      }}
+                    >
+                      <Text style={styles.countryOptionFlag}>{item.flag}</Text>
+                      <View style={styles.countryOptionText}>
+                        <Text style={styles.countryOptionName}>{item.name}</Text>
+                        <Text style={styles.countryOptionCode}>{item.code}</Text>
+                      </View>
+                      {selectedCountry.code === item.code && (
+                        <MaterialIcons name="check" size={24} color={PRIMARY_COLOR} />
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  scrollEnabled={true}
+                />
+              </SafeAreaView>
+            </Modal>
 
             <TouchableOpacity
               style={[
@@ -204,7 +286,7 @@ export default function LoginScreen() {
           <Text style={styles.otpTitle}>Verify OTP</Text>
           <Text style={styles.otpDesc}>
             We've sent a 6-digit verification code to {"\n"}
-            <Text style={styles.phoneHighlight}>+91 {phone}</Text>
+            <Text style={styles.phoneHighlight}>{selectedCountry.code}{phone}</Text>
           </Text>
 
           {/* OTP Input Fields */}
@@ -507,5 +589,48 @@ const styles = StyleSheet.create({
   },
   spacer: {
     height: 20,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: "#f6f8f6",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#ddd",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1a1a1a",
+  },
+  countryOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+    gap: 12,
+  },
+  countryOptionFlag: {
+    fontSize: 24,
+  },
+  countryOptionText: {
+    flex: 1,
+  },
+  countryOptionName: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#1a1a1a",
+  },
+  countryOptionCode: {
+    fontSize: 13,
+    color: "#999",
+    marginTop: 4,
   },
 });

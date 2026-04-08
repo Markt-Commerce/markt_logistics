@@ -2,8 +2,9 @@ import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import apiService from '../../services/api';
 
 const PRIMARY_COLOR = '#e26136';
 const BG_LIGHT = '#f6f8f7';
@@ -12,6 +13,7 @@ export default function AvailabilityToggleScreen() {
   const router = useRouter();
   const [partner, setPartner] = useState<any>(null);
   const [isOnline, setIsOnline] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
     loadPartnerData();
@@ -19,12 +21,42 @@ export default function AvailabilityToggleScreen() {
 
   const loadPartnerData = async () => {
     try {
-      const data = await AsyncStorage.getItem('partner');
-      if (data) {
-        setPartner(JSON.parse(data));
+      const partnerData = await AsyncStorage.getItem('partner');
+      const sessionToken = await AsyncStorage.getItem('sessionToken');
+      
+      if (partnerData) {
+        const parsedPartner = JSON.parse(partnerData);
+        setPartner(parsedPartner);
+        setIsOnline(parsedPartner.status === 'ONLINE');
+      }
+      
+      if (sessionToken) {
+        apiService.setSessionToken(sessionToken);
       }
     } catch (error) {
       console.error('Error loading partner:', error);
+    }
+  };
+
+  const handleStatusToggle = async () => {
+    const newStatus = isOnline ? 'OFFLINE' : 'ONLINE';
+    setIsUpdating(true);
+    
+    try {
+      await apiService.updatePartnerStatus(newStatus);
+      setIsOnline(!isOnline);
+      
+      // Update partner data in storage
+      const updatedPartner = { ...partner, status: newStatus };
+      await AsyncStorage.setItem('partner', JSON.stringify(updatedPartner));
+      setPartner(updatedPartner);
+      
+      Alert.alert('Success', `You are now ${newStatus}`);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to update status. Please try again.');
+      console.error('Status update error:', error);
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -142,15 +174,23 @@ export default function AvailabilityToggleScreen() {
         <View style={styles.actionButtons}>
           <TouchableOpacity
             style={[styles.mainButton, isOnline && styles.mainButtonOffline]}
-            onPress={() => setIsOnline(!isOnline)}
+            onPress={handleStatusToggle}
+            disabled={isUpdating}
           >
-            <MaterialIcons name="power-settings-new" size={20} color="#fff" />
-            <Text style={styles.mainButtonText}>{isOnline ? 'GO OFFLINE' : 'GO ONLINE'}</Text>
+            {isUpdating ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <>
+                <MaterialIcons name="power-settings-new" size={20} color="#fff" />
+                <Text style={styles.mainButtonText}>{isOnline ? 'GO OFFLINE' : 'GO ONLINE'}</Text>
+              </>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.secondaryButton}
             onPress={() => router.push('/(delivery)/nearby-orders')}
+            disabled={isUpdating}
           >
             <MaterialIcons name="explore" size={18} color="#fff" />
             <Text style={styles.secondaryButtonText}>VIEW NEARBY ORDERS</Text>
@@ -159,14 +199,16 @@ export default function AvailabilityToggleScreen() {
           <TouchableOpacity
             style={styles.secondaryButton}
             onPress={() => router.push('/(delivery)/current-assignments')}
+            disabled={isUpdating}
           >
             <MaterialIcons name="assignment" size={18} color="#fff" />
-            <Text>VIEW CURRENT ASSIGNMENTS</Text>
+            <Text style={styles.secondaryButtonText}>VIEW CURRENT ASSIGNMENTS</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.secondaryButton, styles.logoutButton]}
             onPress={handleLogout}
+            disabled={isUpdating}
           >
             <MaterialIcons name="logout" size={18} color="#fff" />
             <Text style={styles.secondaryButtonText}>LOGOUT</Text>

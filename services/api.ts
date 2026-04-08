@@ -1,7 +1,7 @@
 import { Assignment, DeliveryPartner, Location, LoginResponse, Order } from '../types';
 
-const API_BASE_URL = 'https://marktcommerce.com/api/v1/delivery';
-const USE_MOCK = true;
+const API_BASE_URL = 'https://test.api.marktcommerce.com/api/v1/deliveries';
+const USE_MOCK = false;
 
 const MOCK_PARTNERS: Record<string, DeliveryPartner> = {
   '9876543210': {
@@ -58,16 +58,49 @@ class ApiService {
     this.sessionToken = token;
   }
 
+  async sendOtp(phoneNumber: string): Promise<{ message: string; status: string }> {
+    if (USE_MOCK) {
+      return this.mockSendOtp(phoneNumber);
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone_number: phoneNumber }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      throw new Error('Failed to send OTP');
+    }
+  }
+
+  private async mockSendOtp(phoneNumber: string): Promise<{ message: string; status: string }> {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    return {
+      message: '123456',
+      status: 'success',
+    };
+  }
+
   async login(phone: string, otp: string): Promise<LoginResponse> {
     if (USE_MOCK) {
       return this.mockLogin(phone, otp);
     }
 
+    console.log("Attempting login with phone:", phone, "and OTP:", otp);
+
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/delivery/login`, {
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, otp }),
+        body: JSON.stringify({ phone_number: phone, otp }),
       });
 
       const data = await response.json();
@@ -131,7 +164,7 @@ class ApiService {
     }
 
     try {
-      await fetch(`${API_BASE_URL}/delivery-partners/me/location`, {
+      await fetch(`${API_BASE_URL}/partners/me/location`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -151,7 +184,7 @@ class ApiService {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/delivery/orders/available`, {
+      const response = await fetch(`${API_BASE_URL}/orders/available`, {
         headers: { Authorization: `Bearer ${this.sessionToken}` },
       });
       const data = await response.json();

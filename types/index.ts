@@ -10,7 +10,7 @@ export interface Location {
   latitude: number;
   longitude: number;
   accuracy?: number;
-  heading?: number;
+  //heading?: number;
   speed?: number;
 }
 

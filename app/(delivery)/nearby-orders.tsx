@@ -1,7 +1,8 @@
 ﻿import { MaterialIcons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { FlatList, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import apiService from '../../services/api';
 
@@ -12,18 +13,84 @@ export default function NearbyOrdersScreen() {
   const router = useRouter();
   const [orders, setOrders] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLocationLoading, setIsLocationLoading] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState<any>(null);
 
   useEffect(() => {
     loadOrders();
+    initializeLocation();
+    // Set up location tracking interval
+    const locationInterval = setInterval(reportDeliveryLocation, 10000); // Report every 10 seconds
+    return () => clearInterval(locationInterval);
   }, []);
+
+  const initializeLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Location permission is required to track deliveries');
+        return;
+      }
+      await reportDeliveryLocation();
+    } catch (error) {
+      console.error('Error initializing location:', error);
+    }
+  };
+
+  const reportDeliveryLocation = async () => {
+    try {
+      setIsLocationLoading(true);
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      const { latitude, longitude, accuracy, altitude } = location.coords;
+      
+      // Optionally get address from coordinates
+      let address = '';
+      try {
+        const reverseGeocode = await Location.reverseGeocodeAsync({
+          latitude,
+          longitude,
+        });
+        if (reverseGeocode.length > 0) {
+          const geo = reverseGeocode[0];
+          address = `${geo.street || ''} ${geo.city || ''} ${geo.postalCode || ''}`.trim();
+        }
+      } catch (error) {
+        console.error('Error getting address:', error);
+      }
+
+      const locationData = {
+        latitude,
+        longitude,
+        accuracy: Math.round(accuracy || 0),
+        altitude: altitude || 0,
+        address: address || `${latitude}, ${longitude}`,
+        timestamp: new Date().toISOString(),
+      };
+
+      setCurrentLocation(locationData);
+      
+      // Send to backend
+      await apiService.reportLocation(locationData);
+      //console.log('Location reported:', locationData);
+    } catch (error) {
+      console.error('Error reporting location:', error);
+    } finally {
+      setIsLocationLoading(false);
+    }
+  };
 
   const loadOrders = async () => {
     try {
       setIsLoading(true);
       const data = await apiService.getAvailableOrders();
-      setOrders(data);
+      // Ensure data is always an array
+      setOrders(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error loading orders:', error);
+      setOrders([]); // Set empty array on error
     } finally {
       setIsLoading(false);
     }
@@ -40,7 +107,7 @@ export default function NearbyOrdersScreen() {
   };
 
   // Loading / Empty State Screen
-  if (isLoading || orders.length === 0) {
+  if (isLoading || !orders || orders.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <ScrollView contentContainerStyle={styles.emptyScrollContent}>
@@ -99,33 +166,27 @@ export default function NearbyOrdersScreen() {
           <View style={styles.locationPreview}>
             <View style={styles.locationHeader}>
               <Text style={styles.locationLabel}>Your Location</Text>
-              <Text style={styles.locationCity}>New York City</Text>
+              <Text style={styles.locationCity}>
+                {currentLocation ? currentLocation.address : 'Tracking...'}
+              </Text>
             </View>
             <View style={styles.locationMapPlaceholder}>
-              <MaterialIcons name="location-on" size={24} color={PRIMARY_COLOR} />
+              {isLocationLoading ? (
+                <ActivityIndicator size="small" color={PRIMARY_COLOR} />
+              ) : currentLocation ? (
+                <View style={styles.locationInfo}>
+                  <MaterialIcons name="location-on" size={24} color={PRIMARY_COLOR} />
+                  <Text style={styles.locationCoords}>
+                    {currentLocation.latitude.toFixed(4)}, {currentLocation.longitude.toFixed(4)}
+                  </Text>
+                  <Text style={styles.locationAccuracy}>±{currentLocation.accuracy}m</Text>
+                </View>
+              ) : (
+                <MaterialIcons name="location-on" size={24} color={PRIMARY_COLOR} />
+              )}
             </View>
           </View>
         </ScrollView>
-
-        {/* Bottom Nav */}
-        <View style={styles.bottomNav}>
-          <TouchableOpacity style={styles.navItem}>
-            <MaterialIcons name="local-shipping" size={24} color={PRIMARY_COLOR} />
-            <Text style={styles.navLabel}>Orders</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.navItem}>
-            <MaterialIcons name="payments" size={24} color="#999" />
-            <Text style={styles.navLabel}>Earnings</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.navItem}>
-            <MaterialIcons name="map" size={24} color="#999" />
-            <Text style={styles.navLabel}>Heatmap</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.navItem}>
-            <MaterialIcons name="person-outline" size={24} color="#999" />
-            <Text style={styles.navLabel}>Profile</Text>
-          </TouchableOpacity>
-        </View>
       </SafeAreaView>
     );
   }
@@ -167,11 +228,15 @@ export default function NearbyOrdersScreen() {
 
       {/* Orders List */}
       <FlatList
-        data={orders}
-        keyExtractor={(item) => item.id}
+        data={orders || []}
+        keyExtractor={(item, index) => item?.orderId || item?.id || `order-${index}`}
         contentContainerStyle={styles.listContent}
         scrollEnabled={true}
-        renderItem={({ item }) => (
+        renderItem={({ item }) => {
+          // Safety check for item
+          if (!item) return null;
+          
+          return (
           <View style={styles.orderCard}>
             {/* Header with Tags and Price */}
             <View style={styles.orderCardHeader}>
@@ -221,11 +286,11 @@ export default function NearbyOrdersScreen() {
             <View style={styles.infoRow}>
               <View style={styles.infoPill}>
                 <MaterialIcons name="near-me" size={14} color="#999" />
-                <Text style={styles.infoPillText}>{(item.distanceMeters / 1000).toFixed(1)} km</Text>
+                <Text style={styles.infoPillText}>{((item.distanceMeters || 0) / 1000).toFixed(1)} km</Text>
               </View>
               <View style={styles.infoPill}>
                 <MaterialIcons name="schedule" size={14} color="#999" />
-                <Text style={styles.infoPillText}>{item.estimatedDuration || Math.round(item.distanceMeters / 1500)} mins</Text>
+                <Text style={styles.infoPillText}>{item.estimatedDuration || Math.round((item.distanceMeters || 0) / 1500)} mins</Text>
               </View>
             </View>
 
@@ -237,7 +302,8 @@ export default function NearbyOrdersScreen() {
               <Text style={styles.acceptButtonText}>Accept Order</Text>
             </TouchableOpacity>
           </View>
-        )}
+          );
+        }}
       />
     </SafeAreaView>
   );
@@ -455,24 +521,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  bottomNav: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    paddingVertical: 8,
-    paddingHorizontal: 0,
-  },
-  navItem: {
-    flex: 1,
+  locationInfo: {
     alignItems: 'center',
-    paddingVertical: 8,
+    gap: 4,
   },
-  navLabel: {
-    fontSize: 9,
-    fontWeight: '700',
+  locationCoords: {
+    fontSize: 11,
+    fontWeight: '600',
     color: '#666',
     marginTop: 4,
+  },
+  locationAccuracy: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: '#999',
+    marginTop: 2,
   },
   refreshIconButton: {
     width: 40,
