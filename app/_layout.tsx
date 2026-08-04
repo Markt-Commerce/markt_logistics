@@ -4,12 +4,12 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 
-//SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     async function restoreToken() {
@@ -18,21 +18,15 @@ export default function RootLayout() {
         if (token) {
           setIsAuthenticated(true);
         }
-        else{
-          setIsLoading(false);
-        }
       } catch (error) {
         console.error('Failed to restore token:', error);
       } finally {
         setIsLoading(false);
+        SplashScreen.hideAsync();
       }
     }
 
-    
-    if (isAuthenticated) {
-      SplashScreen.hideAsync();
-      restoreToken();
-    }
+    restoreToken();
   }, []);
 
   if (isLoading) {
