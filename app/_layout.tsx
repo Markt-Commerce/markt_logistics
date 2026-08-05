@@ -37,7 +37,7 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
+    <AuthProvider children={undefined}>
       <RootLayoutNav />
     </AuthProvider>
   );
