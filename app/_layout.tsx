@@ -1,39 +1,19 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { AuthProvider, useAuth } from '../contexts/auth';
 
-//SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync();
 
-export default function RootLayout() {
-
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+function RootLayoutNav() {
+  const { isAuthenticated, isLoading } = useAuth();
 
   useEffect(() => {
-    async function restoreToken() {
-      try {
-        const token = await AsyncStorage.getItem('sessionToken');
-        if (token) {
-          setIsAuthenticated(true);
-        }
-        else{
-          setIsLoading(false);
-        }
-      } catch (error) {
-        console.error('Failed to restore token:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    
-    if (isAuthenticated) {
+    if (!isLoading) {
       SplashScreen.hideAsync();
-      restoreToken();
     }
-  }, []);
+  }, [isLoading]);
 
   if (isLoading) {
     return (
@@ -45,11 +25,20 @@ export default function RootLayout() {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      {isAuthenticated ? (
-        <Stack.Screen name="(delivery)" options={{ headerShown: false }} />
-      ) : (
-        <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
-      )}
+      <Stack.Protected guard={isAuthenticated}>
+        <Stack.Screen name="(delivery)" />
+      </Stack.Protected>
+      <Stack.Protected guard={!isAuthenticated}>
+        <Stack.Screen name="(auth)/login" />
+      </Stack.Protected>
     </Stack>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <AuthProvider>
+      <RootLayoutNav />
+    </AuthProvider>
   );
 }

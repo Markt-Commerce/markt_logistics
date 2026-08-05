@@ -15,6 +15,7 @@ import {
   View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useAuth } from "../../contexts/auth";
 import apiService from "../../services/api";
 
 const PRIMARY_COLOR = "#e26136";
@@ -45,6 +46,7 @@ const COUNTRIES = [
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { signIn } = useAuth();
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [showOtpInput, setShowOtpInput] = useState(false);
@@ -121,8 +123,8 @@ export default function LoginScreen() {
     setIsLoading(true);
     try {
       const response = await apiService.login((selectedCountry.code + phone).replace("+", ""), otp);
-      //await AsyncStorage.setItem("sessionToken", response.sessionToken); // no session token
       await AsyncStorage.setItem("partner", JSON.stringify(response.partner));
+      await signIn(response.sessionToken);
       router.replace("/(delivery)/availability-toggle");
     } catch (error) {
       console.error("Login error:", error);

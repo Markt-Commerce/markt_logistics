@@ -77,7 +77,8 @@ class ApiService {
       const data = await response.json();
       return data;
     } catch (error) {
-      throw new Error('Failed to send OTP');
+      console.error('sendOtp failed:', error);
+      throw error;
     }
   }
 
@@ -107,7 +108,8 @@ class ApiService {
       this.sessionToken = data.sessionToken;
       return data;
     } catch (error) {
-      throw new Error('Login failed');
+      console.error('login failed:', error);
+      throw error;
     }
   }
 
@@ -154,7 +156,8 @@ class ApiService {
         body: JSON.stringify({ status }),
       });
     } catch (error) {
-      throw new Error('Failed to update status');
+      console.error('updatePartnerStatus failed:', error);
+      throw error;
     }
   }
 
@@ -190,7 +193,8 @@ class ApiService {
       const data = await response.json();
       return data.orders;
     } catch (error) {
-      throw new Error('Failed to fetch orders');
+      console.error('getAvailableOrders failed:', error);
+      throw error;
     }
   }
 
@@ -217,7 +221,8 @@ class ApiService {
       const data = await response.json();
       return data;
     } catch (error) {
-      throw new Error('Failed to accept order');
+      console.error('acceptOrder failed:', error);
+      throw error;
     }
   }
 
@@ -233,6 +238,7 @@ class ApiService {
       const data = await response.json();
       return data || null;
     } catch (error) {
+      console.error('getActiveAssignment failed:', error);
       return null;
     }
   }
@@ -256,7 +262,8 @@ class ApiService {
         body: JSON.stringify({ status }),
       });
     } catch (error) {
-      throw new Error('Failed to update assignment status');
+      console.error('updateAssignmentStatus failed:', error);
+      throw error;
     }
   }
 
@@ -272,7 +279,8 @@ class ApiService {
       const data = await response.json();
       return data.token;
     } catch (error) {
-      throw new Error('Failed to generate QR');
+      console.error('generateQRToken failed:', error);
+      throw error;
     }
   }
 
@@ -288,7 +296,8 @@ class ApiService {
         headers: { Authorization: `Bearer ${this.sessionToken}` },
       });
     } catch (error) {
-      throw new Error('Failed to confirm delivery');
+      console.error('confirmDelivery failed:', error);
+      throw error;
     }
   }
 
@@ -336,7 +345,8 @@ class ApiService {
       const data = await response.json();
       return data.assignments || [];
     } catch (error) {
-      throw new Error('Failed to fetch assignments');
+      console.error('getActiveAssignments failed:', error);
+      throw error;
     }
   }
 
@@ -354,7 +364,8 @@ class ApiService {
       const data = await response.json();
       return data;
     } catch (error) {
-      throw new Error('Failed to fetch assignment details');
+      console.error('getAssignmentDetails failed:', error);
+      throw error;
     }
   }
 }

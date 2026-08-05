@@ -55,8 +55,8 @@ export default function ActiveDeliveryMapScreen() {
 
       <View style={styles.detailsCard}>
         <Text style={styles.status}>Current: {assignment.status}</Text>
-        <Text style={styles.address}>To: {assignment.deliveryLocation.address}</Text>
-        <Text style={styles.distance}>Distance: {assignment.distance} km</Text>
+        <Text style={styles.address}>To: {assignment.deliveryAddress || 'No address available'}</Text>
+        <Text style={styles.distance}>Distance: {((assignment.distanceMeters || 0) / 1000).toFixed(1)} km</Text>
       </View>
 
       <TouchableOpacity

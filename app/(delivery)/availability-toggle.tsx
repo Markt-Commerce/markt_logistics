@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '../../contexts/auth';
 import apiService from '../../services/api';
 
 const PRIMARY_COLOR = '#e26136';
@@ -11,6 +12,7 @@ const BG_LIGHT = '#f6f8f7';
 
 export default function AvailabilityToggleScreen() {
   const router = useRouter();
+  const { signOut } = useAuth();
   const [partner, setPartner] = useState<any>(null);
   const [isOnline, setIsOnline] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -67,7 +69,7 @@ export default function AvailabilityToggleScreen() {
         text: 'Logout',
         style: 'destructive',
         onPress: async () => {
-          await AsyncStorage.clear();
+          await signOut();
           router.replace('/(auth)/login');
         },
       },

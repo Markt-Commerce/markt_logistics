@@ -26,7 +26,7 @@ export default function DeliveryStatusControlsScreen() {
   const handleUpdateStatus = async (newStatus: string) => {
     try {
       if (assignment) {
-        await apiService.updateAssignmentStatus(assignment.id, newStatus);
+        await apiService.updateAssignmentStatus(assignment.assignmentId, newStatus);
         if (newStatus === 'delivered') {
           Alert.alert('Success', 'Delivery confirmed! Proceed to QR confirmation?', [
             { text: 'Skip', onPress: () => router.replace('/(delivery)/availability-toggle') },
