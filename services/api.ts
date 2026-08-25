@@ -1,4 +1,13 @@
-import { Assignment, DeliveryPartner, Location, LoginResponse, Order } from '../types';
+import {
+  Assignment,
+  AvailableRun,
+  DeliveryFailureReason,
+  DeliveryPartner,
+  Location,
+  LoginResponse,
+  Order,
+  RunDetail,
+} from '../types';
 
 const API_BASE_URL = 'https://test.api.marktcommerce.com/api/v1/deliveries';
 const USE_MOCK = false;
@@ -365,6 +374,157 @@ class ApiService {
       return data;
     } catch (error) {
       console.error('getAssignmentDetails failed:', error);
+      throw error;
+    }
+  }
+
+  // --- Batched delivery runs (10.6-10.7) -------------------------------
+  // Real target model -- see types/index.ts's own note. No USE_MOCK
+  // branch for these (mock mode is off; adding parallel fake data for a
+  // second delivery model wasn't worth the upkeep for this pass).
+
+  private authHeaders() {
+    return { Authorization: `Bearer ${this.sessionToken}` };
+  }
+
+  async getAvailableRuns(searchRadius = 5000): Promise<AvailableRun[]> {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/runs/available?search_radius=${searchRadius}`,
+        { headers: this.authHeaders() }
+      );
+      const data = await response.json();
+      return data.runs || [];
+    } catch (error) {
+      console.error('getAvailableRuns failed:', error);
+      throw error;
+    }
+  }
+
+  async getActiveRun(): Promise<RunDetail> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/runs/active`, {
+        headers: this.authHeaders(),
+      });
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('getActiveRun failed:', error);
+      return { run_id: null, stops: [], orders: [] };
+    }
+  }
+
+  async getRunDetail(runId: string): Promise<RunDetail> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/runs/${runId}`, {
+        headers: this.authHeaders(),
+      });
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('getRunDetail failed:', error);
+      throw error;
+    }
+  }
+
+  async acceptRun(runId: string): Promise<{ run_id: string; status: string; assignment_id: number }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/runs/${runId}/accept`, {
+        method: 'POST',
+        headers: this.authHeaders(),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to accept run');
+      return data;
+    } catch (error) {
+      console.error('acceptRun failed:', error);
+      throw error;
+    }
+  }
+
+  async rejectRun(runId: string): Promise<void> {
+    try {
+      await fetch(`${API_BASE_URL}/runs/${runId}/reject`, {
+        method: 'POST',
+        headers: this.authHeaders(),
+      });
+    } catch (error) {
+      console.error('rejectRun failed:', error);
+      throw error;
+    }
+  }
+
+  async failRun(runId: string, reason?: string): Promise<void> {
+    try {
+      await fetch(`${API_BASE_URL}/runs/${runId}/fail`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify({ reason }),
+      });
+    } catch (error) {
+      console.error('failRun failed:', error);
+      throw error;
+    }
+  }
+
+  async arriveAtStop(runId: string, sellerId: number): Promise<void> {
+    try {
+      await fetch(`${API_BASE_URL}/runs/${runId}/stops/${sellerId}/arrive`, {
+        method: 'POST',
+        headers: this.authHeaders(),
+      });
+    } catch (error) {
+      console.error('arriveAtStop failed:', error);
+      throw error;
+    }
+  }
+
+  async confirmPickupAtStop(runId: string, sellerId: number): Promise<void> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/runs/${runId}/stops/${sellerId}/pickup`, {
+        method: 'POST',
+        headers: this.authHeaders(),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to confirm pickup');
+    } catch (error) {
+      console.error('confirmPickupAtStop failed:', error);
+      throw error;
+    }
+  }
+
+  async confirmRunOrderPod(runId: string, orderId: string, qrCode: string): Promise<{ run_completed: boolean }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/runs/${runId}/orders/${orderId}/pod-confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify({ qr_code: qrCode }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Invalid code');
+      return data;
+    } catch (error) {
+      console.error('confirmRunOrderPod failed:', error);
+      throw error;
+    }
+  }
+
+  async reportDeliveryFailure(
+    runId: string,
+    orderId: string,
+    reason: DeliveryFailureReason,
+    notes?: string
+  ): Promise<void> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/runs/${runId}/orders/${orderId}/report-failure`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify({ reason, notes }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to report failure');
+    } catch (error) {
+      console.error('reportDeliveryFailure failed:', error);
       throw error;
     }
   }

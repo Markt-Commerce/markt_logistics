@@ -40,7 +40,13 @@
       "expo-font",
       "expo-image",
       "expo-status-bar",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Markt Logistics to use your camera to scan delivery codes."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

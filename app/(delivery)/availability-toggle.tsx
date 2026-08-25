@@ -208,6 +208,24 @@ export default function AvailabilityToggleScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => router.push('/(delivery)/available-runs' as any)}
+            disabled={isUpdating}
+          >
+            <MaterialIcons name="local-shipping" size={18} color="#fff" />
+            <Text style={styles.secondaryButtonText}>VIEW AVAILABLE RUNS</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => router.push('/(delivery)/run-details' as any)}
+            disabled={isUpdating}
+          >
+            <MaterialIcons name="route" size={18} color="#fff" />
+            <Text style={styles.secondaryButtonText}>MY ACTIVE RUN</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[styles.secondaryButton, styles.logoutButton]}
             onPress={handleLogout}
             disabled={isUpdating}

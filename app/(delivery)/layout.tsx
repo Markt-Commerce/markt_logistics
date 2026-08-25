@@ -10,6 +10,10 @@ export default function DeliveryLayout() {
       <Stack.Screen name="delivery-status-controls" options={{ title: 'Update Status' }} />
       <Stack.Screen name="current-assignments" options={{ title: 'My Assignments' }} />
       <Stack.Screen name="assignment-details" options={{ title: 'Assignment Details' }} />
+      <Stack.Screen name="available-runs" options={{ title: 'Available Runs' }} />
+      <Stack.Screen name="run-details" options={{ title: 'Run Details' }} />
+      <Stack.Screen name="pod-scan" options={{ title: 'Confirm Delivery', headerShown: false }} />
+      <Stack.Screen name="report-failure" options={{ title: 'Report Issue' }} />
     </Stack>
   );
 }
