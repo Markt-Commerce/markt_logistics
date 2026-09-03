@@ -124,7 +124,7 @@ export default function LoginScreen() {
     try {
       const response = await apiService.login((selectedCountry.code + phone).replace("+", ""), otp);
       await AsyncStorage.setItem("partner", JSON.stringify(response.partner));
-      await signIn(response.sessionToken);
+      await signIn(response.access_token);
       router.replace("/(delivery)/availability-toggle");
     } catch (error) {
       console.error("Login error:", error);

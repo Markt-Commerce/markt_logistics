@@ -32,7 +32,10 @@ export interface Assignment {
 
 export interface LoginResponse {
   partner: DeliveryPartner;
-  sessionToken: string;
+  // Matches markt_python's DeliveryLoginResponseSchema field name exactly --
+  // stateless signed bearer token, 30-day expiry, same mechanism markt_mobile
+  // already relies on for buyer/seller sessions (see contexts/auth.tsx).
+  access_token: string;
 }
 
 // --- Batched delivery runs (10.6-10.7) --------------------------------

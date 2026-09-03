@@ -114,7 +114,7 @@ class ApiService {
       });
 
       const data = await response.json();
-      this.sessionToken = data.sessionToken;
+      this.sessionToken = data.access_token;
       return data;
     } catch (error) {
       console.error('login failed:', error);
@@ -140,12 +140,12 @@ class ApiService {
       };
     }
 
-    const sessionToken = `session_${phone}_${Date.now()}`;
-    this.sessionToken = sessionToken;
+    const access_token = `session_${phone}_${Date.now()}`;
+    this.sessionToken = access_token;
 
     return {
       partner,
-      sessionToken,
+      access_token,
     };
   }
 
