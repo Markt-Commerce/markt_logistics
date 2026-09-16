@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, useAuth } from '../contexts/auth';
 
 SplashScreen.preventAutoHideAsync();
@@ -29,7 +30,11 @@ function RootLayoutNav() {
         <Stack.Screen name="(delivery)" />
       </Stack.Protected>
       <Stack.Protected guard={!isAuthenticated}>
-        <Stack.Screen name="(auth)/login" />
+        {/* Reference the group by its own name, like (delivery) above --
+            "(auth)/login" isn't a valid child name at this level and
+            triggers "[Layout children]: No route named ... exists in
+            nested children" at runtime. */}
+        <Stack.Screen name="(auth)" />
       </Stack.Protected>
     </Stack>
   );
@@ -37,8 +42,10 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <RootLayoutNav />
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <RootLayoutNav />
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }

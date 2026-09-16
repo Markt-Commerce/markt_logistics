@@ -1,59 +1,163 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import BottomSheet, { BottomSheetScrollView, BottomSheetView } from '@gorhom/bottom-sheet';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Button from '../../components/Button';
+import LiveMap from '../../components/LiveMap';
+import StatusPill from '../../components/StatusPill';
+import { colors, radius, shadow, typography } from '../../components/theme';
 import { useAuth } from '../../contexts/auth';
 import apiService from '../../services/api';
+import { Assignment, AvailableRun, DeliveryStop, Order, RunDetail } from '../../types';
+import { activeAssignmentsToPins, activeRunToPins, availableOrdersToPins, availableRunsToPins } from '../../utils/deliveryStops';
 
-const PRIMARY_COLOR = '#e26136';
-const BG_LIGHT = '#f6f8f7';
+type Selection = { kind: 'order'; item: Order } | { kind: 'run'; item: AvailableRun };
 
-export default function AvailabilityToggleScreen() {
+const EMPTY_RUN: RunDetail = { run_id: null, stops: [], orders: [] };
+
+/**
+ * Home/Dashboard -- rebuilt 2026-09-16 as the always-on map + persistent
+ * sheet (replacing the earlier card-list layout, and folding in what
+ * single-orders.tsx/batch-runs.tsx used to do -- see REFACTOR_NOTES.md,
+ * "Always-on map dashboard"). The map is always showing the rider's own
+ * location plus pins for their in-progress work (active single-order
+ * assignments, active run) and, while online, what's nearby to accept
+ * (available orders, available runs at their market/area centroid). The
+ * sheet is the browse+preview+accept surface for all of it; tapping either
+ * a pin or a sheet row opens the same preview.
+ */
+export default function DashboardMapScreen() {
   const router = useRouter();
   const { signOut } = useAuth();
   const [partner, setPartner] = useState<any>(null);
   const [isOnline, setIsOnline] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [activeAssignments, setActiveAssignments] = useState<Assignment[]>([]);
+  const [availableRuns, setAvailableRuns] = useState<AvailableRun[]>([]);
+  const [activeRun, setActiveRun] = useState<RunDetail>(EMPTY_RUN);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const [selection, setSelection] = useState<Selection | null>(null);
+  const [acting, setActing] = useState(false);
+  const sheetRef = useRef<BottomSheet>(null);
+  const snapPoints = useMemo(() => ['20%', '52%', '88%'], []);
+
+  // Ref access lives here, outside render -- expands the sheet to show a
+  // preview once something's selected (pin tap or sheet row tap), and back
+  // down once it's cleared.
   useEffect(() => {
-    loadPartnerData();
-  }, []);
+    sheetRef.current?.snapToIndex(selection ? 2 : 1);
+  }, [selection]);
 
   const loadPartnerData = async () => {
     try {
       const partnerData = await AsyncStorage.getItem('partner');
       const sessionToken = await AsyncStorage.getItem('sessionToken');
-      
+
+      if (sessionToken) {
+        apiService.setSessionToken(sessionToken);
+      }
+
       if (partnerData) {
         const parsedPartner = JSON.parse(partnerData);
         setPartner(parsedPartner);
         setIsOnline(parsedPartner.status === 'ONLINE');
       }
-      
+
+      // The login response (PartnerSchema) only ever carries id/name/status --
+      // rating and vehicleType only come from GET /partners/me. Refresh from
+      // there once we have a token so the pills below aren't blank.
       if (sessionToken) {
-        apiService.setSessionToken(sessionToken);
+        try {
+          const freshPartner = await apiService.getCurrentPartner();
+          setPartner(freshPartner);
+          setIsOnline(freshPartner.status === 'ONLINE');
+          await AsyncStorage.setItem('partner', JSON.stringify(freshPartner));
+        } catch (error) {
+          console.error('Error refreshing partner:', error);
+        }
       }
     } catch (error) {
       console.error('Error loading partner:', error);
     }
   };
 
+  useEffect(() => {
+    // See original comment (kept from the card-list version): standard
+    // fetch-on-mount, not the anti-pattern the set-state-in-effect rule
+    // targets.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadPartnerData();
+  }, []);
+
+  // Active work (assignments/run) loads regardless of online status -- a
+  // rider going offline mid-run still needs to see and finish it. Browse
+  // lists (available orders/runs) only load while online, matching the
+  // status card's own copy ("Go online to start receiving requests") and
+  // avoiding calls the backend may reject anyway (get_available_runs 400s
+  // without a known rider location). Re-runs automatically whenever
+  // `isOnline` flips, so toggling online populates the map immediately.
+  const load = useCallback(async () => {
+    try {
+      const [assignments, currentRun] = await Promise.all([
+        apiService.getActiveAssignments().catch((error) => {
+          console.error('Error loading active assignments:', error);
+          return [] as Assignment[];
+        }),
+        apiService.getActiveRun(),
+      ]);
+      setActiveAssignments(assignments);
+      setActiveRun(currentRun);
+
+      if (isOnline) {
+        const [availableOrders, runs] = await Promise.all([
+          apiService.getAvailableOrders().catch((error) => {
+            console.error('Error loading available orders:', error);
+            return [] as Order[];
+          }),
+          apiService.getAvailableRuns().catch((error) => {
+            console.error('Error loading available runs:', error);
+            return [] as AvailableRun[];
+          }),
+        ]);
+        setOrders(availableOrders);
+        setAvailableRuns(runs);
+      } else {
+        setOrders([]);
+        setAvailableRuns([]);
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [isOnline]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    load();
+  };
+
   const handleStatusToggle = async () => {
     const newStatus = isOnline ? 'OFFLINE' : 'ONLINE';
     setIsUpdating(true);
-    
+
     try {
       await apiService.updatePartnerStatus(newStatus);
       setIsOnline(!isOnline);
-      
-      // Update partner data in storage
+
       const updatedPartner = { ...partner, status: newStatus };
       await AsyncStorage.setItem('partner', JSON.stringify(updatedPartner));
       setPartner(updatedPartner);
-      
-      Alert.alert('Success', `You are now ${newStatus}`);
     } catch (error) {
       Alert.alert('Error', 'Failed to update status. Please try again.');
       console.error('Status update error:', error);
@@ -62,7 +166,7 @@ export default function AvailabilityToggleScreen() {
     }
   };
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
     Alert.alert('Logout', 'Are you sure you want to logout?', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -76,435 +180,399 @@ export default function AvailabilityToggleScreen() {
     ]);
   };
 
+  const openActiveAssignment = (assignment: Assignment) =>
+    router.push({ pathname: '/(delivery)/active-delivery', params: { kind: 'order', id: assignment.assignmentId } });
+
+  const openActiveRun = () => {
+    if (!activeRun.run_id) return;
+    router.push({ pathname: '/(delivery)/active-delivery', params: { kind: 'run', id: activeRun.run_id } });
+  };
+
+  // Plain state updates -- no ref access here, since these are called from
+  // pin-adapter callbacks built during render (see `pins` below). The sheet
+  // itself is snapped to the right point in the effect above instead, kept
+  // out of the render path.
+  const openOrderPreview = (order: Order) => setSelection({ kind: 'order', item: order });
+  const openRunPreview = (run: AvailableRun) => setSelection({ kind: 'run', item: run });
+  const closePreview = () => setSelection(null);
+
+  const handleAcceptOrder = async () => {
+    if (selection?.kind !== 'order') return;
+    const order = selection.item;
+    setActing(true);
+    try {
+      const assignment = await apiService.acceptOrder(order.orderId);
+      closePreview();
+      if (assignment) {
+        router.push({ pathname: '/(delivery)/active-delivery', params: { kind: 'order', id: assignment.assignmentId } });
+      }
+      load();
+    } catch (error) {
+      console.error('Error accepting order:', error);
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const handleDeclineOrder = async () => {
+    if (selection?.kind !== 'order') return;
+    const order = selection.item;
+    setActing(true);
+    try {
+      await apiService.rejectOrder(order.orderId);
+    } catch (error) {
+      console.error('Error rejecting order:', error);
+    } finally {
+      setActing(false);
+      closePreview();
+      load();
+    }
+  };
+
+  const handleAcceptRun = async () => {
+    if (selection?.kind !== 'run') return;
+    const run = selection.item;
+    setActing(true);
+    try {
+      await apiService.acceptRun(run.run_id);
+      closePreview();
+      router.push({ pathname: '/(delivery)/active-delivery', params: { kind: 'run', id: run.run_id } });
+    } catch (error) {
+      console.error('Error accepting run:', error);
+      closePreview();
+      load();
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const handleDeclineRun = async () => {
+    if (selection?.kind !== 'run') return;
+    const run = selection.item;
+    setActing(true);
+    try {
+      await apiService.rejectRun(run.run_id);
+    } catch (error) {
+      console.error('Error rejecting run:', error);
+    } finally {
+      setActing(false);
+      closePreview();
+      load();
+    }
+  };
+
   if (!partner) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.loadingText}>Loading...</Text>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator color={colors.primary} />
       </View>
     );
   }
 
+  const pins: DeliveryStop[] = [
+    ...activeAssignmentsToPins(activeAssignments, openActiveAssignment),
+    ...activeRunToPins(activeRun, openActiveRun),
+    ...availableOrdersToPins(orders, openOrderPreview),
+    ...availableRunsToPins(availableRuns, openRunPreview),
+  ];
+
+  const hasActiveWork = activeAssignments.length > 0 || !!activeRun.run_id;
+
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
+    <View style={styles.container}>
+      <LiveMap stops={pins} />
+
+      <SafeAreaView style={styles.topOverlay} edges={['top']} pointerEvents="box-none">
+        <View style={styles.topBar}>
+          <View style={styles.topBarLeft}>
             <View style={styles.avatar}>
-              <MaterialIcons name="account-circle" size={48} color={PRIMARY_COLOR} />
+              <Text style={styles.avatarText}>{(partner.name || '?').charAt(0).toUpperCase()}</Text>
             </View>
-            <View>
-              <Text style={styles.greeting}>Welcome back,</Text>
-              <Text style={styles.partnerName}>{partner.name}</Text>
-            </View>
-          </View>
-          <TouchableOpacity style={styles.iconButton} onPress={() => Alert.alert('Notifications')}>
-            <MaterialIcons name="notifications" size={24} color="#333" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Rating & Vehicle Pill */}
-        <View style={styles.pillContainer}>
-          <View style={styles.pill}>
-            <MaterialIcons name="star" size={14} color={PRIMARY_COLOR} />
-            <Text style={styles.pillText}>{partner.rating}</Text>
-          </View>
-          <View style={[styles.pill, styles.pillSecondary]}>
-            <MaterialIcons name="electric-bolt" size={14} color={PRIMARY_COLOR} />
-            <Text style={styles.pillText}>{partner.vehicleType}</Text>
-          </View>
-        </View>
-
-        {/* Main Status Card */}
-        <View style={[styles.statusCard, isOnline && styles.statusCardActive]}>
-          <View style={styles.statusContent}>
-            <View style={styles.statusDot}>
-              <View style={[styles.dot, isOnline && styles.dotActive]} />
-            </View>
-            <View style={styles.statusTextContainer}>
-              <Text style={styles.statusTitle}>{isOnline ? "YOU'RE ONLINE" : 'YOU ARE OFFLINE'}</Text>
-              <Text style={styles.statusSubtitle}>
-                {isOnline ? 'Actively scanning for nearby orders' : 'Go online to start receiving requests'}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.partnerName} numberOfLines={1}>
+                {partner.name}
               </Text>
-            </View>
-            {isOnline && (
-              <View style={styles.boostBadge}>
-                <MaterialIcons name="bolt" size={12} color={PRIMARY_COLOR} />
-                <Text style={styles.boostText}>1.5x</Text>
+              <View style={styles.statusRow}>
+                <View style={[styles.dot, isOnline && styles.dotActive]} />
+                <Text style={styles.statusText}>{isOnline ? "You're online" : "You're offline"}</Text>
               </View>
-            )}
+            </View>
           </View>
-
-          {isOnline && (
-            <View style={styles.scanLine}>
-              <View style={styles.scanProgress} />
-            </View>
-          )}
-        </View>
-
-        {/* Stats Grid */}
-        <View style={styles.statsGrid}>
-          <View style={styles.statCard}>
-            <View style={styles.statIcon}>
-              <MaterialIcons name="payments" size={20} color={PRIMARY_COLOR} />
-            </View>
-            <Text style={styles.statLabel}>Earnings</Text>
-            <Text style={styles.statValue}>$0.00</Text>
-          </View>
-
-          <View style={styles.statCard}>
-            <View style={styles.statIcon}>
-              <MaterialIcons name="shopping-cart" size={20} color={PRIMARY_COLOR} />
-            </View>
-            <Text style={styles.statLabel}>Deliveries</Text>
-            <Text style={styles.statValue}>0</Text>
+          <View style={styles.topBarRight}>
+            <TouchableOpacity
+              style={[styles.onlinePill, isOnline && styles.onlinePillActive]}
+              onPress={handleStatusToggle}
+              disabled={isUpdating}
+            >
+              {isUpdating ? (
+                <ActivityIndicator size="small" color={isOnline ? '#fff' : colors.primary} />
+              ) : (
+                <Text style={[styles.onlinePillText, isOnline && styles.onlinePillTextActive]}>
+                  {isOnline ? 'Go offline' : 'Go online'}
+                </Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.iconButton} onPress={handleLogout}>
+              <MaterialIcons name="logout" size={18} color={colors.textPrimary} />
+            </TouchableOpacity>
           </View>
         </View>
+      </SafeAreaView>
 
-        {/* Insight Card */}
-        <View style={styles.insightCard}>
-          <View style={styles.insightIcon}>
-            <MaterialIcons name="tips-and-updates" size={20} color={PRIMARY_COLOR} />
-          </View>
-          <View style={styles.insightContent}>
-            <Text style={styles.insightTitle}>Peak Hours Starting</Text>
-            <Text style={styles.insightText}>Lunch rush expected to start in 20 mins. Higher demand means 1.5x earnings!</Text>
-          </View>
-        </View>
+      <BottomSheet
+        ref={sheetRef}
+        index={1}
+        snapPoints={snapPoints}
+        enablePanDownToClose={false}
+        enableDynamicSizing={false}
+        handleIndicatorStyle={styles.handle}
+        backgroundStyle={styles.sheetBackground}
+      >
+        {selection ? (
+          <BottomSheetView style={styles.previewSheet}>
+            <TouchableOpacity onPress={closePreview} style={styles.backRow}>
+              <MaterialIcons name="arrow-back" size={18} color={colors.textSecondary} />
+              <Text style={styles.backText}>Back</Text>
+            </TouchableOpacity>
 
-        {/* Action Buttons */}
-        <View style={styles.actionButtons}>
-          <TouchableOpacity
-            style={[styles.mainButton, isOnline && styles.mainButtonOffline]}
-            onPress={handleStatusToggle}
-            disabled={isUpdating}
-          >
-            {isUpdating ? (
-              <ActivityIndicator color="#fff" size="small" />
+            {selection.kind === 'order' ? (
+              <>
+                <Text style={styles.previewTitle}>Order #{selection.item.orderId.slice(0, 8)}</Text>
+                <View style={styles.previewRow}>
+                  <Text style={styles.previewLabel}>Earnings</Text>
+                  <Text style={styles.previewValue}>₦{selection.item.estimatedEarnings}</Text>
+                </View>
+                <View style={styles.previewRow}>
+                  <Text style={styles.previewLabel}>Distance</Text>
+                  <Text style={styles.previewValue}>{(selection.item.distanceMeters / 1000).toFixed(1)} km</Text>
+                </View>
+                <View style={styles.previewActions}>
+                  <Button label="Decline" variant="outline" onPress={handleDeclineOrder} disabled={acting} style={{ flex: 1 }} />
+                  <Button label="Accept order" onPress={handleAcceptOrder} loading={acting} style={{ flex: 1 }} />
+                </View>
+              </>
             ) : (
               <>
-                <MaterialIcons name="power-settings-new" size={20} color="#fff" />
-                <Text style={styles.mainButtonText}>{isOnline ? 'GO OFFLINE' : 'GO ONLINE'}</Text>
+                <Text style={styles.previewTitle}>
+                  {selection.item.market ? `${selection.item.market} · ${selection.item.area}` : selection.item.area}
+                </Text>
+                <View style={styles.previewRow}>
+                  <Text style={styles.previewLabel}>Orders in this run</Text>
+                  <Text style={styles.previewValue}>{selection.item.order_count}</Text>
+                </View>
+                <View style={styles.previewRow}>
+                  <Text style={styles.previewLabel}>Distance</Text>
+                  <Text style={styles.previewValue}>{(selection.item.distance_meters / 1000).toFixed(1)} km</Text>
+                </View>
+                <View style={styles.previewRow}>
+                  <Text style={styles.previewLabel}>Price per order</Text>
+                  <Text style={styles.previewValue}>
+                    ₦{selection.item.price_per_order != null ? selection.item.price_per_order.toFixed(0) : '—'}
+                  </Text>
+                </View>
+                <View style={styles.previewActions}>
+                  <Button label="Skip" variant="outline" onPress={handleDeclineRun} disabled={acting} style={{ flex: 1 }} />
+                  <Button label="Accept run" onPress={handleAcceptRun} loading={acting} style={{ flex: 1 }} />
+                </View>
               </>
             )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => router.push('/(delivery)/nearby-orders')}
-            disabled={isUpdating}
+          </BottomSheetView>
+        ) : (
+          <BottomSheetScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={styles.listContent}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}
           >
-            <MaterialIcons name="explore" size={18} color="#fff" />
-            <Text style={styles.secondaryButtonText}>VIEW NEARBY ORDERS</Text>
-          </TouchableOpacity>
+            {hasActiveWork && (
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>My active deliveries</Text>
+                {activeAssignments.map((assignment) => (
+                  <TouchableOpacity
+                    key={assignment.assignmentId}
+                    style={styles.activeCard}
+                    onPress={() => openActiveAssignment(assignment)}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.activeCardTitle}>Order #{assignment.orderId.slice(0, 8)}</Text>
+                      <StatusPill status={assignment.status} />
+                    </View>
+                    <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} />
+                  </TouchableOpacity>
+                ))}
+                {activeRun.run_id && (
+                  <TouchableOpacity style={styles.activeCard} onPress={openActiveRun}>
+                    <MaterialIcons name="local-shipping" size={20} color={colors.primary} />
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text style={styles.activeCardTitle}>Run in progress</Text>
+                      <Text style={styles.activeCardSubtitle}>
+                        {activeRun.market ? `${activeRun.market} · ${activeRun.area}` : activeRun.area}
+                      </Text>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
 
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => router.push('/(delivery)/current-assignments')}
-            disabled={isUpdating}
-          >
-            <MaterialIcons name="assignment" size={18} color="#fff" />
-            <Text style={styles.secondaryButtonText}>VIEW CURRENT ASSIGNMENTS</Text>
-          </TouchableOpacity>
+            {!isOnline ? (
+              <View style={styles.section}>
+                <View style={styles.offlineNotice}>
+                  <MaterialIcons name="wifi-off" size={22} color={colors.textMuted} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.offlineTitle}>You&apos;re offline</Text>
+                    <Text style={styles.offlineSubtitle}>Go online to see nearby single orders and batch runs on the map.</Text>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <>
+                <View style={styles.section}>
+                  <Text style={styles.sectionLabel}>Available orders ({orders.length})</Text>
+                  {orders.length === 0 && !loading && <Text style={styles.emptyRow}>No orders nearby right now.</Text>}
+                  {orders.map((order) => (
+                    <TouchableOpacity key={order.orderId} style={styles.itemCard} onPress={() => openOrderPreview(order)}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.itemPrice}>₦{order.estimatedEarnings}</Text>
+                        <Text style={styles.itemMeta}>{(order.distanceMeters / 1000).toFixed(1)} km away</Text>
+                      </View>
+                      <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
 
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => router.push('/(delivery)/available-runs' as any)}
-            disabled={isUpdating}
-          >
-            <MaterialIcons name="local-shipping" size={18} color="#fff" />
-            <Text style={styles.secondaryButtonText}>VIEW AVAILABLE RUNS</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => router.push('/(delivery)/run-details' as any)}
-            disabled={isUpdating}
-          >
-            <MaterialIcons name="route" size={18} color="#fff" />
-            <Text style={styles.secondaryButtonText}>MY ACTIVE RUN</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.secondaryButton, styles.logoutButton]}
-            onPress={handleLogout}
-            disabled={isUpdating}
-          >
-            <MaterialIcons name="logout" size={18} color="#fff" />
-            <Text style={styles.secondaryButtonText}>LOGOUT</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+                <View style={styles.section}>
+                  <Text style={styles.sectionLabel}>Available runs ({availableRuns.length})</Text>
+                  {availableRuns.length === 0 && !loading && <Text style={styles.emptyRow}>No runs nearby right now.</Text>}
+                  {availableRuns.map((run) => (
+                    <TouchableOpacity key={run.run_id} style={styles.itemCard} onPress={() => openRunPreview(run)}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.runArea}>{run.market ? `${run.market} · ${run.area}` : run.area}</Text>
+                        <Text style={styles.itemMeta}>
+                          {run.order_count} orders · {(run.distance_meters / 1000).toFixed(1)} km
+                        </Text>
+                      </View>
+                      <Text style={styles.runPrice}>₦{run.price_per_order != null ? run.price_per_order.toFixed(0) : '—'}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+          </BottomSheetScrollView>
+        )}
+      </BottomSheet>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: BG_LIGHT,
+  container: { flex: 1, backgroundColor: colors.background },
+  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
+  topOverlay: { position: 'absolute', top: 0, left: 0, right: 0 },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginHorizontal: 12,
+    marginTop: 8,
+    padding: 10,
+    borderRadius: radius,
+    backgroundColor: colors.background,
+    ...shadow,
   },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  loadingText: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 16,
-    color: '#666',
+  topBarLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  avatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  header: {
+  avatarText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  partnerName: { ...typography.bodyBold, color: colors.textPrimary },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.textMuted },
+  dotActive: { backgroundColor: colors.primary },
+  statusText: { ...typography.caption, color: colors.textSecondary },
+  onlinePill: {
+    height: 36,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  onlinePillActive: { backgroundColor: colors.primary },
+  onlinePillText: { ...typography.caption, fontWeight: '700', color: colors.primary },
+  onlinePillTextActive: { color: '#fff' },
+  iconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetBackground: { backgroundColor: colors.background, ...shadow },
+  handle: { backgroundColor: colors.border, width: 40 },
+  listContent: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 32 },
+  section: { marginBottom: 22 },
+  sectionLabel: { ...typography.label, color: colors.textMuted, marginBottom: 10 },
+  activeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryMuted,
+    borderRadius: radius,
+    padding: 14,
+    marginBottom: 10,
+  },
+  activeCardTitle: { ...typography.bodyBold, color: colors.textPrimary, marginBottom: 6 },
+  activeCardSubtitle: { ...typography.caption, color: colors.textSecondary },
+  itemCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius,
+    padding: 14,
+    marginBottom: 10,
+  },
+  itemPrice: { ...typography.subtitle, color: colors.primary },
+  itemMeta: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  runArea: { ...typography.bodyBold, color: colors.textPrimary },
+  runPrice: { ...typography.subtitle, color: colors.primary },
+  emptyRow: { ...typography.secondary, color: colors.textMuted, paddingVertical: 8 },
+  offlineNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    backgroundColor: colors.surface,
+    borderRadius: radius,
+    padding: 14,
+  },
+  offlineTitle: { ...typography.bodyBold, color: colors.textPrimary, marginBottom: 2 },
+  offlineSubtitle: { ...typography.caption, color: colors.textSecondary },
+  previewSheet: { paddingHorizontal: 20, paddingTop: 4 },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 14 },
+  backText: { ...typography.secondary, color: colors.textSecondary },
+  previewTitle: { ...typography.subtitle, color: colors.textPrimary, marginBottom: 16 },
+  previewRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#f0f0f0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  greeting: {
-    fontSize: 12,
-    color: '#999',
-    fontWeight: '500',
-  },
-  partnerName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1a1a1a',
-  },
-  iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  pillContainer: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 20,
-  },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: PRIMARY_COLOR + '20',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  pillSecondary: {
-    backgroundColor: PRIMARY_COLOR + '10',
-  },
-  pillText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: PRIMARY_COLOR,
-  },
-  statusCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  statusCardActive: {
-    borderWidth: 1,
-    borderColor: PRIMARY_COLOR + '30',
-  },
-  statusContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  statusDot: {
-    position: 'relative',
-  },
-  dot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#ccc',
-  },
-  dotActive: {
-    backgroundColor: PRIMARY_COLOR,
-  },
-  statusTextContainer: {
-    flex: 1,
-  },
-  statusTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#1a1a1a',
-    letterSpacing: 0.5,
-  },
-  statusSubtitle: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 2,
-  },
-  boostBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: PRIMARY_COLOR + '10',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  boostText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: PRIMARY_COLOR,
-  },
-  scanLine: {
-    height: 4,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 2,
-    marginTop: 16,
-    overflow: 'hidden',
-  },
-  scanProgress: {
-    width: '33%',
-    height: '100%',
-    backgroundColor: PRIMARY_COLOR,
-    borderRadius: 2,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  statIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: PRIMARY_COLOR + '10',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  statLabel: {
-    fontSize: 11,
-    color: '#999',
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  statValue: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1a1a1a',
-  },
-  insightCard: {
-    backgroundColor: PRIMARY_COLOR + '08',
-    borderWidth: 1,
-    borderColor: PRIMARY_COLOR + '20',
-    borderRadius: 12,
-    padding: 16,
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 28,
-  },
-  insightIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: PRIMARY_COLOR + '15',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  insightContent: {
-    flex: 1,
-  },
-  insightTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginBottom: 4,
-  },
-  insightText: {
-    fontSize: 12,
-    color: '#666',
-    lineHeight: 16,
-  },
-  actionButtons: {
-    gap: 12,
-    paddingBottom: 20,
-  },
-  mainButton: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 12,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  mainButtonOffline: {
-    backgroundColor: PRIMARY_COLOR,
-  },
-  mainButtonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  secondaryButton: {
-    backgroundColor: PRIMARY_COLOR,
-    borderRadius: 12,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-    shadowColor: PRIMARY_COLOR,
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  secondaryButtonText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  logoutButton: {
-    backgroundColor: '#D32F2F',
-    shadowColor: '#D32F2F',
-  },
+  previewLabel: { ...typography.secondary, color: colors.textSecondary },
+  previewValue: { ...typography.bodyBold, color: colors.textPrimary },
+  previewActions: { flexDirection: 'row', gap: 12, marginTop: 20, marginBottom: 12 },
 });

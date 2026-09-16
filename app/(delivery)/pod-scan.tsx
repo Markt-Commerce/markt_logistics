@@ -12,21 +12,34 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { colors } from '../../components/theme';
 import apiService from '../../services/api';
 
-const PRIMARY_COLOR = '#e26136';
-const BG_LIGHT = '#f6f8f7';
+const PRIMARY_COLOR = colors.primary;
+const BG_LIGHT = colors.background;
 
 /**
  * 10.6 POD handshake, rider side: scan the code the buyer's app displays
  * (markt_mobile's app/orders/pod/[id].tsx), or fall back to typing it in
  * if scanning isn't practical (poor lighting, buyer showing the plain
- * text instead of the QR). Either way calls the same
- * POST /runs/{runId}/orders/{orderId}/pod-confirm.
+ * text instead of the QR). Shared by both delivery models -- `mode`
+ * selects which backend confirm call to make, since their responses
+ * aren't symmetric: confirmRunOrderPod() returns {run_completed} (used
+ * for the run-complete vs order-confirmed messaging below);
+ * confirmDelivery() (single-order) returns void, so order-mode always
+ * shows the same simple message and returns to the dashboard rather than
+ * back to active-delivery.tsx -- a confirmed assignment drops out of
+ * getActiveAssignments(), so re-opening it there would 404.
  */
 export default function PodScanScreen() {
   const router = useRouter();
-  const { runId, orderId } = useLocalSearchParams<{ runId: string; orderId: string }>();
+  const { mode, runId, assignmentId, orderId } = useLocalSearchParams<{
+    mode?: 'run' | 'order';
+    runId?: string;
+    assignmentId?: string;
+    orderId: string;
+  }>();
+  const isOrderMode = mode === 'order';
   const [permission, requestPermission] = useCameraPermissions();
   const [manualMode, setManualMode] = useState(false);
   const [manualCode, setManualCode] = useState('');
@@ -34,18 +47,33 @@ export default function PodScanScreen() {
   const [scanned, setScanned] = useState(false);
 
   const confirm = async (code: string) => {
-    if (!runId || !orderId || !code || submitting) return;
+    if (!orderId || !code || submitting) return;
+    if (isOrderMode ? !assignmentId : !runId) return;
     setSubmitting(true);
     try {
-      const result = await apiService.confirmRunOrderPod(runId, orderId, code.trim());
-      Alert.alert(
-        'Delivered',
-        result.run_completed
-          ? 'Order confirmed. That was the last one -- run complete!'
-          : 'Order confirmed as delivered.',
-        [{ text: 'OK', onPress: () => router.replace({ pathname: '/(delivery)/run-details', params: { runId } } as any) }]
-      );
+      if (isOrderMode) {
+        await apiService.confirmDelivery(orderId, code.trim());
+        Alert.alert('Delivered', 'Delivery confirmed.', [
+          { text: 'OK', onPress: () => router.replace('/(delivery)/availability-toggle') },
+        ]);
+      } else {
+        const result = await apiService.confirmRunOrderPod(runId!, orderId, code.trim());
+        Alert.alert(
+          'Delivered',
+          result.run_completed
+            ? 'Order confirmed. That was the last one -- run complete!'
+            : 'Order confirmed as delivered.',
+          [
+            {
+              text: 'OK',
+              onPress: () =>
+                router.replace({ pathname: '/(delivery)/active-delivery', params: { kind: 'run', id: runId! } }),
+            },
+          ]
+        );
+      }
     } catch (error) {
+      console.error('Error confirming delivery:', error);
       Alert.alert('Could not confirm', 'That code was rejected. Please try again.');
       setScanned(false);
       setSubmitting(false);
@@ -109,7 +137,7 @@ export default function PodScanScreen() {
           <MaterialIcons name="qr-code-scanner" size={48} color={PRIMARY_COLOR} />
           <Text style={styles.permissionTitle}>Camera access needed</Text>
           <Text style={styles.permissionText}>
-            To scan a buyer's delivery code, Markt Logistics needs camera access.
+            To scan a buyer&apos;s delivery code, Markt Logistics needs camera access.
           </Text>
           <TouchableOpacity style={styles.confirmButton} onPress={requestPermission}>
             <Text style={styles.confirmButtonText}>Grant access</Text>
@@ -135,7 +163,7 @@ export default function PodScanScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backButtonLight}>
             <MaterialIcons name="close" size={22} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.overlayTitle}>Scan buyer's code</Text>
+          <Text style={styles.overlayTitle}>Scan buyer&apos;s code</Text>
           <View style={{ width: 40 }} />
         </View>
 

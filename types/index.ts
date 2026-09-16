@@ -22,12 +22,21 @@ export interface Order {
   estimatedEarnings: number;
 }
 
+// Backend status is a single field shared by two schemas that each only
+// declare part of its range: ActiveAssignmentSchema (GET) documents
+// "ASSIGNED"/"ACCEPTED"/"REJECTED" (pre-pickup states), while
+// LogisticStatusUpdateSchema (PATCH .../status) accepts "ARRIVED_PICKUP" /
+// "PICKED_UP" / "EN_ROUTE_TO_DROPOFF" / "DELIVERED_PENDING_QR" / "COMPLETED"
+// (the progress states set by the rider). Marshmallow doesn't enforce
+// `validate` on dump, so a GET after a PATCH does return the real
+// progress value -- kept as `string` here rather than a union since the
+// backend itself doesn't model this as one clean enum.
 export interface Assignment {
   assignmentId: string;
   orderId: string;
   pickup: { lat: number; lng: number };
   dropoff: { lat: number; lng: number };
-  status: 'EN_ROUTE_TO_PICKUP' | 'ARRIVED_PICKUP' | 'PICKED_UP' | 'EN_ROUTE_TO_DROPOFF' | 'DELIVERED_PENDING_QR';
+  status: string;
 }
 
 export interface LoginResponse {
@@ -39,10 +48,10 @@ export interface LoginResponse {
 }
 
 // --- Batched delivery runs (10.6-10.7) --------------------------------
-// The real target model (per Joshua's own direction: "we do not want a
-// single-order rider app or backend") -- a run batches several sellers'
-// orders into one dispatch. Built alongside the single-order types
-// above rather than replacing them; both are live today.
+// A run batches several sellers' orders into one dispatch. This is the
+// second permanent delivery option buyers can choose at checkout,
+// alongside single-order delivery above (see REFACTOR_NOTES.md) -- both
+// types are live today and neither replaces the other.
 
 export interface AvailableRun {
   run_id: string;
@@ -51,6 +60,12 @@ export interface AvailableRun {
   order_count: number;
   price_per_order: number | null;
   distance_meters: number;
+  // Area centroid, not real per-seller/per-buyer coordinates -- added
+  // 2026-09-16 for the always-on dashboard map. One representative pin per
+  // run; real per-stop coords only ever appear post-acceptance (RunStop/
+  // RunOrderAddress below). See REFACTOR_NOTES.md.
+  lat: number | null;
+  lng: number | null;
 }
 
 export type RunStopStatus = 'pending' | 'arrived' | 'picked_up';
@@ -59,6 +74,10 @@ export interface RunStop {
   seller_id: number;
   seller_name: string | null;
   shop_address: string | null;
+  // Added 2026-09-14 (DeliveryRunStopDetailSchema) -- Seller.shop_latitude/
+  // shop_longitude, exposed so the rider app can plot a real pickup pin.
+  lat: number | null;
+  lng: number | null;
   status: RunStopStatus;
   arrived_at: string | null;
   picked_up_at: string | null;
@@ -68,6 +87,10 @@ export interface RunOrderAddress {
   street_address: string | null;
   city: string | null;
   state: string | null;
+  // Added 2026-09-14 -- Address.latitude/longitude, same reasoning as
+  // RunStop.lat/lng above.
+  lat: number | null;
+  lng: number | null;
 }
 
 export type RunOrderPodStatus = 'pending' | 'qr_issued' | 'delivered';
@@ -94,3 +117,40 @@ export interface RunDetail {
 }
 
 export type DeliveryFailureReason = 'buyer_unavailable' | 'bad_address' | 'buyer_refused';
+
+// --- Shared "Stop" abstraction for the active-delivery screen ---------
+// Both delivery models reduce to an ordered list of stops the rider works
+// through one at a time. `coords` is optional because the backend's run
+// schemas (RunStop/RunOrder above) carry no lat/lng at all today -- only
+// single-order assignments do -- so the batch-run map preview falls back
+// to a coordinate-less layout (see REFACTOR_NOTES.md).
+export interface DeliveryStop {
+  id: string;
+  // 'pickup'/'dropoff' are per-stop states within one already-accepted
+  // assignment/run (active-delivery.tsx). 'available-order'/'available-run'
+  // (added 2026-09-16 for the always-on dashboard map) are browse-only pins
+  // for things the rider hasn't accepted yet -- LiveMap colors them
+  // differently and they carry `onPress` (a tap opens a preview/accept
+  // sheet) instead of `onPrimaryAction` (which runs a status transition).
+  kind: 'pickup' | 'dropoff' | 'available-order' | 'available-run';
+  title: string;
+  subtitle?: string;
+  coords?: { lat: number; lng: number };
+  status: string;
+  // Fires when the marker itself is tapped on the map -- used by the
+  // dashboard's browse pins to open the matching sheet row; unused by
+  // active-delivery.tsx's stops (those act via onPrimaryAction instead).
+  onPress?: () => void;
+  // Only the one stop that's genuinely actionable right now (per each
+  // flow's own gating rules) gets these set -- ActiveDeliverySheet reads
+  // their presence, not the stop's position in the list, to decide what
+  // "Next" means.
+  primaryActionLabel?: string;
+  onPrimaryAction?: () => Promise<void>;
+  // A second, non-destructive action alongside the primary one -- used
+  // for a run dropoff's "Report issue" (navigates away, doesn't mutate
+  // anything itself), available under the same gating as the primary
+  // delivery-confirm action.
+  secondaryActionLabel?: string;
+  onSecondaryAction?: () => void;
+}

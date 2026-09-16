@@ -3,11 +3,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { colors } from '../../components/theme';
 import apiService from '../../services/api';
 import { DeliveryFailureReason } from '../../types';
 
-const PRIMARY_COLOR = '#e26136';
-const BG_LIGHT = '#f6f8f7';
+const PRIMARY_COLOR = colors.primary;
+const BG_LIGHT = colors.background;
 
 const REASONS: { value: DeliveryFailureReason; label: string; description: string }[] = [
   {
@@ -44,9 +45,13 @@ export default function ReportFailureScreen() {
     try {
       await apiService.reportDeliveryFailure(runId, orderId, selected, notes || undefined);
       Alert.alert('Reported', 'The failed delivery has been logged.', [
-        { text: 'OK', onPress: () => router.replace({ pathname: '/(delivery)/run-details', params: { runId } } as any) },
+        {
+          text: 'OK',
+          onPress: () => router.replace({ pathname: '/(delivery)/active-delivery', params: { kind: 'run', id: runId } }),
+        },
       ]);
     } catch (error) {
+      console.error('Error reporting failure:', error);
       Alert.alert('Could not report this', 'Please try again.');
     } finally {
       setSubmitting(false);

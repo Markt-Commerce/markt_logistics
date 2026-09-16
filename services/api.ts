@@ -10,55 +10,39 @@ import {
 } from '../types';
 
 const API_BASE_URL = 'https://test.api.marktcommerce.com/api/v1/deliveries';
-const USE_MOCK = false;
 
-const MOCK_PARTNERS: Record<string, DeliveryPartner> = {
-  '9876543210': {
-    id: 'partner_001',
-    name: 'Rajesh Kumar',
-    vehicleType: 'BIKE',
-    rating: 4.8,
-    status: 'ONLINE',
-  },
-  '9123456789': {
-    id: 'partner_002',
-    name: 'Priya Singh',
-    vehicleType: 'SCOOTER',
-    rating: 4.9,
-    status: 'OFFLINE',
-  },
-  '8765432109': {
-    id: 'partner_003',
-    name: 'Amit Patel',
-    vehicleType: 'CAR',
-    rating: 4.7,
-    status: 'OFFLINE',
-  },
-};
+// --- Response normalizers -----------------------------------------------
+// markt_python's schemas (app/deliveries/schemas.py) use snake_case keys
+// and, for `pickup`, a LIST of locations (AvailableOrderSchema/
+// ActiveAssignmentSchema -- an order/assignment can have more than one
+// pickup stop), while this app's types use camelCase and a single
+// {lat, lng}. These normalizers are the one place that translation
+// happens so screens can keep using the existing Order/Assignment shapes.
 
-const MOCK_ORDERS: Order[] = [
-  {
-    orderId: 'ord_001',
-    pickup: { lat: 28.7041, lng: 77.1025 },
-    dropoff: { lat: 28.5244, lng: 77.1855 },
-    distanceMeters: 15000,
-    estimatedEarnings: 125,
-  },
-  {
-    orderId: 'ord_002',
-    pickup: { lat: 28.6139, lng: 77.209 },
-    dropoff: { lat: 28.6245, lng: 77.2163 },
-    distanceMeters: 8000,
-    estimatedEarnings: 85,
-  },
-  {
-    orderId: 'ord_003',
-    pickup: { lat: 28.5355, lng: 77.391 },
-    dropoff: { lat: 28.5244, lng: 77.1855 },
-    distanceMeters: 20000,
-    estimatedEarnings: 150,
-  },
-];
+function firstLocation(pickup: unknown): { lat: number; lng: number } {
+  if (Array.isArray(pickup)) return pickup[0] ?? { lat: 0, lng: 0 };
+  return (pickup as { lat: number; lng: number }) ?? { lat: 0, lng: 0 };
+}
+
+function normalizeOrder(raw: any): Order {
+  return {
+    orderId: raw.order_id,
+    pickup: firstLocation(raw.pickup),
+    dropoff: raw.dropoff,
+    distanceMeters: raw.distance_meters,
+    estimatedEarnings: raw.estimated_earnings,
+  };
+}
+
+function normalizeAssignment(raw: any): Assignment {
+  return {
+    assignmentId: raw.assignment_id,
+    orderId: raw.order_id,
+    pickup: firstLocation(raw.pickup),
+    dropoff: raw.dropoff,
+    status: raw.status,
+  };
+}
 
 class ApiService {
   private sessionToken: string | null = null;
@@ -67,11 +51,11 @@ class ApiService {
     this.sessionToken = token;
   }
 
-  async sendOtp(phoneNumber: string): Promise<{ message: string; status: string }> {
-    if (USE_MOCK) {
-      return this.mockSendOtp(phoneNumber);
-    }
+  private authHeaders() {
+    return { Authorization: `Bearer ${this.sessionToken}` };
+  }
 
+  async sendOtp(phoneNumber: string): Promise<{ message: string; status: string }> {
     try {
       const response = await fetch(`${API_BASE_URL}/auth/otp`, {
         method: 'POST',
@@ -91,27 +75,17 @@ class ApiService {
     }
   }
 
-  private async mockSendOtp(phoneNumber: string): Promise<{ message: string; status: string }> {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    return {
-      message: '123456',
-      status: 'success',
-    };
-  }
-
   async login(phone: string, otp: string): Promise<LoginResponse> {
-    if (USE_MOCK) {
-      return this.mockLogin(phone, otp);
-    }
-
-    console.log("Attempting login with phone:", phone, "and OTP:", otp);
-
     try {
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone_number: phone, otp }),
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
       const data = await response.json();
       this.sessionToken = data.access_token;
@@ -122,48 +96,46 @@ class ApiService {
     }
   }
 
-  private async mockLogin(phone: string, otp: string): Promise<LoginResponse> {
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
-    if (otp !== '123456') {
-      throw new Error('Invalid OTP');
-    }
-
-    let partner = MOCK_PARTNERS[phone];
-    if (!partner) {
-      partner = {
-        id: `partner_${phone}`,
-        name: `Partner ${phone.slice(-4)}`,
-        vehicleType: (['BIKE', 'SCOOTER', 'CAR'][Math.floor(Math.random() * 3)] as any),
-        rating: 4.5 + Math.random(),
-        status: 'OFFLINE',
+  /** GET /partners/me -- the login response (PartnerSchema) only ever
+   * carries id/name/status; vehicle_type and rating are only returned
+   * here (DeliveryDataResponseSchema). Call this after login/on app
+   * start to fill those in. */
+  async getCurrentPartner(): Promise<DeliveryPartner> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/partners/me`, {
+        headers: this.authHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      return {
+        id: data.id,
+        name: data.name,
+        vehicleType: data.vehicle_type,
+        rating: data.rating,
+        status: data.status === 'ACTIVE' ? 'ONLINE' : 'OFFLINE',
       };
+    } catch (error) {
+      console.error('getCurrentPartner failed:', error);
+      throw error;
     }
-
-    const access_token = `session_${phone}_${Date.now()}`;
-    this.sessionToken = access_token;
-
-    return {
-      partner,
-      access_token,
-    };
   }
 
   async updatePartnerStatus(status: 'ONLINE' | 'OFFLINE'): Promise<void> {
-    if (USE_MOCK) {
-      await new Promise((resolve) => setTimeout(resolve, 800));
-      return;
-    }
+    // DeliveryStatusUpdateSchema only accepts ACTIVE/INACTIVE/SUSPENDED --
+    // the app's own ONLINE/OFFLINE concept is a UI-level simplification.
+    const backendStatus = status === 'ONLINE' ? 'ACTIVE' : 'INACTIVE';
 
     try {
-      await fetch(`${API_BASE_URL}/delivery-partners/me/status`, {
+      const response = await fetch(`${API_BASE_URL}/partners/me/status`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.sessionToken}`,
-        },
-        body: JSON.stringify({ status }),
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify({ status: backendStatus }),
       });
+      if (!response.ok) {
+        throw new Error(`Failed to update status: ${response.status}`);
+      }
     } catch (error) {
       console.error('updatePartnerStatus failed:', error);
       throw error;
@@ -171,18 +143,17 @@ class ApiService {
   }
 
   async reportLocation(location: Location): Promise<void> {
-    if (USE_MOCK) {
-      return;
-    }
-
     try {
       await fetch(`${API_BASE_URL}/partners/me/location`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.sessionToken}`,
-        },
-        body: JSON.stringify(location),
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        // DeliveryLocationRequestSchema requires lat/lng, not latitude/longitude.
+        body: JSON.stringify({
+          lat: location.latitude,
+          lng: location.longitude,
+          accuracy: location.accuracy,
+          speed: location.speed,
+        }),
       });
     } catch (error) {
       console.error('Failed to report location:', error);
@@ -190,65 +161,94 @@ class ApiService {
   }
 
   async getAvailableOrders(): Promise<Order[]> {
-    if (USE_MOCK) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      return MOCK_ORDERS;
-    }
-
     try {
       const response = await fetch(`${API_BASE_URL}/orders/available`, {
-        headers: { Authorization: `Bearer ${this.sessionToken}` },
+        headers: this.authHeaders(),
       });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       const data = await response.json();
-      return data.orders;
+      return (data.orders || []).map(normalizeOrder);
     } catch (error) {
       console.error('getAvailableOrders failed:', error);
       throw error;
     }
   }
 
-  async acceptOrder(orderId: string): Promise<Assignment> {
-    if (USE_MOCK) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      const order = MOCK_ORDERS.find((o) => o.orderId === orderId);
-      if (!order) throw new Error('Order not found');
-
-      return {
-        assignmentId: `as_${Date.now()}`,
-        orderId,
-        pickup: order.pickup,
-        dropoff: order.dropoff,
-        status: 'EN_ROUTE_TO_PICKUP',
-      };
-    }
-
+  async acceptOrder(orderId: string): Promise<Assignment | null> {
     try {
-      const response = await fetch(`${API_BASE_URL}/delivery/orders/${orderId}/accept`, {
+      const response = await fetch(`${API_BASE_URL}/orders/${orderId}/accept`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${this.sessionToken}` },
+        headers: this.authHeaders(),
       });
-      const data = await response.json();
-      return data;
+      if (!response.ok) {
+        throw new Error(`Failed to accept order: ${response.status}`);
+      }
+      // DeliveryOrderAcceptResponseSchema only returns {assignment_id,
+      // status} -- fetch the full assignment (pickup/dropoff) from the
+      // active-assignments list rather than assuming this response has it.
+      const assignments = await this.getActiveAssignments();
+      return assignments.find((a) => a.orderId === orderId) ?? null;
     } catch (error) {
       console.error('acceptOrder failed:', error);
       throw error;
     }
   }
 
-  async getActiveAssignment(): Promise<Assignment | null> {
-    if (USE_MOCK) {
-      return null;
-    }
-
+  async rejectOrder(orderId: string): Promise<void> {
     try {
-      const response = await fetch(`${API_BASE_URL}/delivery/assignments/active`, {
-        headers: { Authorization: `Bearer ${this.sessionToken}` },
+      const response = await fetch(`${API_BASE_URL}/orders/${orderId}/reject`, {
+        method: 'POST',
+        headers: this.authHeaders(),
       });
+      if (!response.ok) {
+        throw new Error(`Failed to reject order: ${response.status}`);
+      }
+    } catch (error) {
+      console.error('rejectOrder failed:', error);
+      throw error;
+    }
+  }
+
+  async getActiveAssignments(): Promise<Assignment[]> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/assignments/active`, {
+        headers: this.authHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       const data = await response.json();
-      return data || null;
+      return (data.assignments || []).map(normalizeAssignment);
+    } catch (error) {
+      console.error('getActiveAssignments failed:', error);
+      throw error;
+    }
+  }
+
+  /** The backend has no GET for a single assignment or a single active
+   * assignment -- only the list (`GET /assignments/active`) and the
+   * write-only `PATCH /assignments/<id>/status`. Both singular helpers
+   * below are derived from that list until a real detail route exists
+   * (see REFACTOR_NOTES.md). */
+  async getActiveAssignment(): Promise<Assignment | null> {
+    try {
+      const assignments = await this.getActiveAssignments();
+      return assignments[0] ?? null;
     } catch (error) {
       console.error('getActiveAssignment failed:', error);
       return null;
+    }
+  }
+
+  async getAssignmentDetails(assignmentId: string): Promise<Assignment | null> {
+    try {
+      const assignments = await this.getActiveAssignments();
+      return assignments.find((a) => a.assignmentId === assignmentId) ?? null;
+    } catch (error) {
+      console.error('getAssignmentDetails failed:', error);
+      throw error;
     }
   }
 
@@ -256,136 +256,48 @@ class ApiService {
     assignmentId: string,
     status: string
   ): Promise<void> {
-    if (USE_MOCK) {
-      await new Promise((resolve) => setTimeout(resolve, 800));
-      return;
-    }
-
     try {
-      await fetch(`${API_BASE_URL}/delivery/assignments/${assignmentId}/status`, {
+      const response = await fetch(`${API_BASE_URL}/assignments/${assignmentId}/status`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.sessionToken}`,
-        },
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
         body: JSON.stringify({ status }),
       });
+      if (!response.ok) {
+        throw new Error(`Failed to update assignment status: ${response.status}`);
+      }
     } catch (error) {
       console.error('updateAssignmentStatus failed:', error);
       throw error;
     }
   }
 
-  async generateQRToken(orderId: string): Promise<string> {
-    if (USE_MOCK) {
-      return `QR_${orderId}_${Date.now()}`;
-    }
+  // Note: GET /orders/<id>/qr ("get QR code for order escrow release")
+  // issues the code the BUYER's app displays -- it's markt_mobile's
+  // concern, not this rider app's, so there's no wrapper for it here.
+  // The rider only ever consumes that code via confirmDelivery below
+  // (mirrors the batch flow's pod-scan.tsx: buyer shows the code, rider
+  // reads/enters it).
 
+  async confirmDelivery(orderId: string, qrCode: string): Promise<void> {
     try {
-      const response = await fetch(`${API_BASE_URL}/delivery/orders/${orderId}/qr`, {
-        headers: { Authorization: `Bearer ${this.sessionToken}` },
-      });
-      const data = await response.json();
-      return data.token;
-    } catch (error) {
-      console.error('generateQRToken failed:', error);
-      throw error;
-    }
-  }
-
-  async confirmDelivery(orderId: string): Promise<void> {
-    if (USE_MOCK) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      return;
-    }
-
-    try {
-      await fetch(`${API_BASE_URL}/delivery/orders/${orderId}/qr/confirm`, {
+      const response = await fetch(`${API_BASE_URL}/orders/${orderId}/qr/confirm`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${this.sessionToken}` },
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify({ order_id: orderId, qr_code: qrCode }),
       });
+      if (!response.ok) {
+        throw new Error(`Failed to confirm delivery: ${response.status}`);
+      }
     } catch (error) {
       console.error('confirmDelivery failed:', error);
       throw error;
     }
   }
 
-  async getActiveAssignments(): Promise<any[]> {
-    if (USE_MOCK) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      return [
-        {
-          assignmentId: 'as_001',
-          orderId: 'ord_001',
-          pickup: { lat: 28.7041, lng: 77.1025 },
-          dropoff: { lat: 28.5244, lng: 77.1855 },
-          distanceMeters: 15000,
-          estimatedEarnings: 125,
-          estimatedDuration: 25,
-          status: 'in_transit',
-          pickupAddress: 'Green Gourmet Market, West 4th St, Manhattan',
-          deliveryAddress: 'Chelsea Gardens Apts, Bldg 4, Apt 12C',
-          sellerName: 'Green Gourmet Market',
-          buyerName: 'John Doe',
-          qrToken: 'frpdha34390293'
-        },
-        {
-          assignmentId: 'as_002',
-          orderId: 'ord_002',
-          pickup: { lat: 28.6139, lng: 77.209 },
-          dropoff: { lat: 28.6245, lng: 77.2163 },
-          distanceMeters: 8000,
-          estimatedEarnings: 85,
-          estimatedDuration: 12,
-          status: 'picked_up',
-          pickupAddress: 'Artisan Bakery & Co, Greenwich Ave',
-          deliveryAddress: 'West Village Lofts, Floor 2, Door 201',
-          sellerName: 'Artisan Bakery & Co',
-          buyerName: 'Jane Smith',
-          qrToken: 'frpdha34390294'
-        },
-      ];
-    }
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/delivery/assignments/active`, {
-        headers: { Authorization: `Bearer ${this.sessionToken}` },
-      });
-      const data = await response.json();
-      return data.assignments || [];
-    } catch (error) {
-      console.error('getActiveAssignments failed:', error);
-      throw error;
-    }
-  }
-
-  async getAssignmentDetails(assignmentId: string): Promise<any> {
-    if (USE_MOCK) {
-      await new Promise((resolve) => setTimeout(resolve, 800));
-      const assignments = await this.getActiveAssignments();
-      return assignments.find((a) => a.assignmentId === assignmentId) || null;
-    }
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/delivery/assignments/${assignmentId}`, {
-        headers: { Authorization: `Bearer ${this.sessionToken}` },
-      });
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      console.error('getAssignmentDetails failed:', error);
-      throw error;
-    }
-  }
-
   // --- Batched delivery runs (10.6-10.7) -------------------------------
-  // Real target model -- see types/index.ts's own note. No USE_MOCK
-  // branch for these (mock mode is off; adding parallel fake data for a
-  // second delivery model wasn't worth the upkeep for this pass).
-
-  private authHeaders() {
-    return { Authorization: `Bearer ${this.sessionToken}` };
-  }
+  // The second permanent delivery option alongside the single-order flow
+  // above (buyers choose one or the other at checkout; see
+  // REFACTOR_NOTES.md) -- both are live and neither is going away.
 
   async getAvailableRuns(searchRadius = 5000): Promise<AvailableRun[]> {
     try {
