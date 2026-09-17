@@ -119,7 +119,13 @@ export interface AvailableRun {
   market: string | null;
   area: string;
   order_count: number;
+  /** What each buyer pays towards the run -- not the rider's number. */
   price_per_order: number | null;
+  /** What the rider is credited for one drop on this run, and for all of
+   *  them. Showing price_per_order as earnings over-promised: it is the
+   *  buyers' split, and the rider takes a share of the trip. */
+  rider_earning_per_drop: number | null;
+  rider_earning_total: number | null;
   distance_meters: number;
   // Area centroid, not real per-seller/per-buyer coordinates -- added
   // 2026-09-16 for the always-on dashboard map. One representative pin per
