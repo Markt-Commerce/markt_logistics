@@ -10,7 +10,7 @@ import {
 } from '../types';
 
 // Source of truth: services/config.ts -- set EXPO_PUBLIC_API_URL per build.
-import { API_BASE_URL } from './config';
+import { API_BASE_URL, API_HOST } from './config';
 
 // --- Response normalizers -----------------------------------------------
 // markt_python's schemas (app/deliveries/schemas.py) use snake_case keys
@@ -441,6 +441,37 @@ class ApiService {
     } catch (error) {
       console.error('reportDeliveryFailure failed:', error);
       throw error;
+    }
+  }
+
+  /** Register this device for push.
+   *
+   * The endpoint is shared with the shopper app -- the backend files the
+   * token against whoever the session belongs to, which for this app is the
+   * rider. Never throws: a rider who cannot be pushed to can still work, and
+   * failing sign-in over it would be worse than missing a notification. */
+  async registerPushToken(token: string, platform: string): Promise<void> {
+    try {
+      await fetch(`${API_HOST}/api/v1/notifications/push-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify({ token, platform }),
+      });
+    } catch (error) {
+      console.warn('registerPushToken failed:', error);
+    }
+  }
+
+  /** Stop pushing to this device, on sign-out. */
+  async removePushToken(token: string): Promise<void> {
+    try {
+      await fetch(`${API_HOST}/api/v1/notifications/push-token`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify({ token }),
+      });
+    } catch (error) {
+      console.warn('removePushToken failed:', error);
     }
   }
 }

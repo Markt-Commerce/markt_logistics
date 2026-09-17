@@ -13,6 +13,9 @@ module.exports = {
     userInterfaceStyle: 'automatic',
     ios: {
       supportsTablet: true,
+      // Required for an iOS build at all, and it is what the APNs
+      // credentials attach to. Matches the Android package's shape.
+      bundleIdentifier: 'com.marktcommerce.marktlogistics',
     },
     android: {
       adaptiveIcon: {
@@ -36,6 +39,10 @@ module.exports = {
     },
     plugins: [
       'expo-router',
+      // Push. The config plugin is what wires the native notification
+      // permission and Android channel into a dev/production build; without
+      // it the JS API is there but nothing arrives.
+      'expo-notifications',
       [
         'expo-splash-screen',
         {
