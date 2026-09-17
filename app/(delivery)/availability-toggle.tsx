@@ -31,6 +31,28 @@ const EMPTY_RUN: RunDetail = { run_id: null, stops: [], orders: [] };
  * sheet is the browse+preview+accept surface for all of it; tapping either
  * a pin or a sheet row opens the same preview.
  */
+/** Money the way a rider reads it: whole naira, no trailing kobo. */
+function money(value: number | null | undefined): string {
+  if (value == null) return '\u2014';
+  return `\u20a6${Math.round(value).toLocaleString()}`;
+}
+
+function km(meters: number): string {
+  return `${(meters / 1000).toFixed(1)} km`;
+}
+
+/** What the whole run pays. Falls back to the per-drop figure times the
+ *  drops when an older backend has not sent the total yet, and to a dash
+ *  rather than \u20a60 when it has sent neither -- an unpriced run should not
+ *  advertise nothing as if it were free. */
+function riderTotal(run: AvailableRun): string {
+  if (run.rider_earning_total != null) return money(run.rider_earning_total);
+  if (run.rider_earning_per_drop != null) {
+    return money(run.rider_earning_per_drop * run.order_count);
+  }
+  return '\u2014';
+}
+
 export default function DashboardMapScreen() {
   const router = useRouter();
   const { signOut } = useAuth();
@@ -355,12 +377,14 @@ export default function DashboardMapScreen() {
               <>
                 <Text style={styles.previewTitle}>Order #{selection.item.orderId.slice(0, 8)}</Text>
                 <View style={styles.previewRow}>
-                  <Text style={styles.previewLabel}>Earnings</Text>
-                  <Text style={styles.previewValue}>₦{selection.item.estimatedEarnings}</Text>
+                  <Text style={styles.previewLabel}>You earn</Text>
+                  <Text style={styles.previewValueStrong}>
+                    {money(selection.item.estimatedEarnings)}
+                  </Text>
                 </View>
                 <View style={styles.previewRow}>
                   <Text style={styles.previewLabel}>Distance</Text>
-                  <Text style={styles.previewValue}>{(selection.item.distanceMeters / 1000).toFixed(1)} km</Text>
+                  <Text style={styles.previewValue}>{km(selection.item.distanceMeters)}</Text>
                 </View>
                 <View style={styles.previewActions}>
                   <Button label="Decline" variant="outline" onPress={handleDeclineOrder} disabled={acting} style={{ flex: 1 }} />
@@ -378,12 +402,21 @@ export default function DashboardMapScreen() {
                 </View>
                 <View style={styles.previewRow}>
                   <Text style={styles.previewLabel}>Distance</Text>
-                  <Text style={styles.previewValue}>{(selection.item.distance_meters / 1000).toFixed(1)} km</Text>
+                  <Text style={styles.previewValue}>{km(selection.item.distance_meters)}</Text>
+                </View>
+                {/* "Price per order" was price_per_order -- what each buyer
+                    pays towards the run, not what the rider is credited.
+                    These are the rider's own figures. */}
+                <View style={styles.previewRow}>
+                  <Text style={styles.previewLabel}>You earn per drop</Text>
+                  <Text style={styles.previewValue}>
+                    {money(selection.item.rider_earning_per_drop)}
+                  </Text>
                 </View>
                 <View style={styles.previewRow}>
-                  <Text style={styles.previewLabel}>Price per order</Text>
-                  <Text style={styles.previewValue}>
-                    ₦{selection.item.price_per_order != null ? selection.item.price_per_order.toFixed(0) : '—'}
+                  <Text style={styles.previewLabel}>You earn in total</Text>
+                  <Text style={styles.previewValueStrong}>
+                    {riderTotal(selection.item)}
                   </Text>
                 </View>
                 <View style={styles.previewActions}>
@@ -440,12 +473,24 @@ export default function DashboardMapScreen() {
                   <SectionHeader title={`Available orders (${orders.length})`} />
                   {orders.length === 0 && !loading && <SectionEmpty icon="explore" title="No orders nearby right now." />}
                   {orders.map((order) => (
-                    <TouchableOpacity key={order.orderId} style={styles.itemCard} onPress={() => openOrderPreview(order)}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.itemPrice}>₦{order.estimatedEarnings}</Text>
-                        <Text style={styles.itemMeta}>{(order.distanceMeters / 1000).toFixed(1)} km away</Text>
+                    <TouchableOpacity
+                      key={order.orderId}
+                      style={styles.jobCard}
+                      onPress={() => openOrderPreview(order)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Single order, ${money(order.estimatedEarnings)}, ${km(order.distanceMeters)} away`}
+                    >
+                      <View style={styles.jobHead}>
+                        <View style={styles.jobBadge}>
+                          <MaterialIcons name="two-wheeler" size={14} color={colors.textSecondary} />
+                          <Text style={styles.jobBadgeText}>Single order</Text>
+                        </View>
+                        <Text style={styles.jobPay}>{money(order.estimatedEarnings)}</Text>
                       </View>
-                      <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} />
+                      <View style={styles.jobFoot}>
+                        <Text style={styles.jobMeta}>{km(order.distanceMeters)} to pick up</Text>
+                        <Text style={styles.jobAction}>View</Text>
+                      </View>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -454,14 +499,38 @@ export default function DashboardMapScreen() {
                   <SectionHeader title={`Available runs (${availableRuns.length})`} />
                   {availableRuns.length === 0 && !loading && <SectionEmpty icon="local-shipping" title="No runs nearby right now." />}
                   {availableRuns.map((run) => (
-                    <TouchableOpacity key={run.run_id} style={styles.itemCard} onPress={() => openRunPreview(run)}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.runArea}>{run.market ? `${run.market} · ${run.area}` : run.area}</Text>
-                        <Text style={styles.itemMeta}>
-                          {run.order_count} orders · {(run.distance_meters / 1000).toFixed(1)} km
-                        </Text>
+                    <TouchableOpacity
+                      key={run.run_id}
+                      style={styles.jobCard}
+                      onPress={() => openRunPreview(run)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Run of ${run.order_count} orders, ${riderTotal(run)} total`}
+                    >
+                      <View style={styles.jobHead}>
+                        <View style={styles.jobBadge}>
+                          <MaterialIcons name="local-shipping" size={14} color={colors.textSecondary} />
+                          <Text style={styles.jobBadgeText}>
+                            {run.order_count} {run.order_count === 1 ? 'drop' : 'drops'}
+                          </Text>
+                        </View>
+                        {/* The total, not price_per_order. That is what each
+                            buyer pays towards the run; the rider takes a
+                            share of the trip, and the total is what makes a
+                            run worth more than a single order. */}
+                        <Text style={styles.jobPay}>{riderTotal(run)}</Text>
                       </View>
-                      <Text style={styles.runPrice}>₦{run.price_per_order != null ? run.price_per_order.toFixed(0) : '—'}</Text>
+                      <Text style={styles.jobWhere} numberOfLines={1}>
+                        {run.market ? `${run.market} · ${run.area}` : run.area}
+                      </Text>
+                      <View style={styles.jobFoot}>
+                        <Text style={styles.jobMeta}>
+                          {km(run.distance_meters)} away
+                          {run.rider_earning_per_drop != null
+                            ? ` · ${money(run.rider_earning_per_drop)} a drop`
+                            : ''}
+                        </Text>
+                        <Text style={styles.jobAction}>View</Text>
+                      </View>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -516,20 +585,41 @@ const styles = StyleSheet.create({
   },
   activeCardTitle: { ...typography.bodyBold, color: colors.textPrimary, marginBottom: 6 },
   activeCardSubtitle: { ...typography.caption, color: colors.textSecondary },
-  itemCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+  // One card shape for both kinds of work, so a rider comparing a single
+  // order against a run is comparing like with like. What it pays is the
+  // biggest thing on it, because that is what the decision turns on.
+  jobCard: {
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius,
     padding: 14,
     marginBottom: 10,
   },
-  itemPrice: { ...typography.subtitle, color: colors.primary },
-  itemMeta: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  runArea: { ...typography.bodyBold, color: colors.textPrimary },
-  runPrice: { ...typography.subtitle, color: colors.primary },
+  jobHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  jobBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.surface,
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  jobBadgeText: { ...typography.caption, fontSize: 11, color: colors.textSecondary },
+  jobPay: { ...typography.title, fontSize: 22, color: colors.textPrimary },
+  jobWhere: { ...typography.bodyBold, color: colors.textPrimary, marginTop: 10 },
+  jobFoot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  jobMeta: { ...typography.caption, color: colors.textSecondary, flex: 1 },
+  jobAction: { ...typography.caption, fontWeight: '700', color: colors.primary },
   previewSheet: { paddingHorizontal: 20, paddingTop: 4 },
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 14 },
   backText: { ...typography.secondary, color: colors.textSecondary },
@@ -543,5 +633,6 @@ const styles = StyleSheet.create({
   },
   previewLabel: { ...typography.secondary, color: colors.textSecondary },
   previewValue: { ...typography.bodyBold, color: colors.textPrimary },
+  previewValueStrong: { ...typography.subtitle, color: colors.primary },
   previewActions: { flexDirection: 'row', gap: 12, marginTop: 20, marginBottom: 12 },
 });
