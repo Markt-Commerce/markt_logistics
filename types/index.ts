@@ -6,6 +6,67 @@ export interface DeliveryPartner {
   status?: 'ONLINE' | 'OFFLINE';
 }
 
+// --- Wallet / payout (2026-09-17) ---------------------------------------
+// Backed by the same buyer/seller wallet system in markt_python
+// (app/wallet/) -- WalletAccount gained a nullable delivery_user_id FK
+// alongside the existing user_id, so these hit the exact same /wallet/*
+// routes a buyer/seller would, just authenticated as a DeliveryUser
+// instead. See REFACTOR_NOTES.md, "No rider payout functionality."
+
+export interface WalletBalance {
+  currency: string;
+  availableBalance: number;
+}
+
+export interface WalletTransaction {
+  id: number;
+  type: 'credit' | 'debit';
+  amount: number;
+  balanceAfter: number;
+  referenceType: string;
+  referenceId: string;
+  description: string | null;
+  createdAt: string | null;
+}
+
+export type WithdrawalStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
+export interface Withdrawal {
+  id: string;
+  amount: number;
+  currency: string;
+  status: WithdrawalStatus;
+  // Only present on GET /wallet/withdrawals list items -- the POST
+  // /wallet/withdraw response (WithdrawalResponseSchema) doesn't dump
+  // these, so they're optional here rather than on two separate types.
+  accountName?: string;
+  accountNumber?: string;
+  paystackTransferRef?: string | null;
+  failureReason?: string | null;
+  createdAt?: string | null;
+}
+
+export interface Bank {
+  name: string;
+  code: string;
+  slug?: string | null;
+  type?: string | null;
+}
+
+export interface ResolvedBankAccount {
+  accountNumber: string;
+  accountName: string | null;
+  bankCode: string;
+  resolved: boolean;
+}
+
+export interface Pagination {
+  page: number;
+  perPage: number;
+  totalItems: number;
+  totalPages: number;
+}
+
 export interface Location {
   latitude: number;
   longitude: number;

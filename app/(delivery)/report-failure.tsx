@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import SectionHeader from '../../components/SectionHeader';
 import { colors } from '../../components/theme';
 import apiService from '../../services/api';
 import { DeliveryFailureReason } from '../../types';
@@ -69,7 +70,7 @@ export default function ReportFailureScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.sectionLabel}>What happened?</Text>
+        <SectionHeader title="What happened?" />
         {REASONS.map((r) => (
           <TouchableOpacity
             key={r.value}
@@ -86,7 +87,7 @@ export default function ReportFailureScreen() {
           </TouchableOpacity>
         ))}
 
-        <Text style={[styles.sectionLabel, { marginTop: 20 }]}>Additional notes (optional)</Text>
+        <SectionHeader title="Additional notes (optional)" style={{ marginTop: 20 }} />
         <TextInput
           style={styles.notesInput}
           value={notes}
@@ -131,7 +132,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   content: { paddingHorizontal: 20, paddingBottom: 32 },
-  sectionLabel: { fontSize: 12, fontWeight: '700', color: '#999', letterSpacing: 0.5, marginBottom: 10 },
   reasonCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
