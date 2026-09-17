@@ -3,10 +3,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import BottomSheet, { BottomSheetScrollView, BottomSheetView } from '@gorhom/bottom-sheet';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../../components/Button';
 import LiveMap from '../../components/LiveMap';
+import SectionEmpty from '../../components/SectionEmpty';
+import SectionHeader from '../../components/SectionHeader';
 import StatusPill from '../../components/StatusPill';
 import { colors, radius, shadow, typography } from '../../components/theme';
 import { useAuth } from '../../contexts/auth';
@@ -45,6 +47,7 @@ export default function DashboardMapScreen() {
 
   const [selection, setSelection] = useState<Selection | null>(null);
   const [acting, setActing] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const sheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => ['20%', '52%', '88%'], []);
 
@@ -282,40 +285,53 @@ export default function DashboardMapScreen() {
     <View style={styles.container}>
       <LiveMap stops={pins} />
 
+      {menuOpen && <Pressable style={StyleSheet.absoluteFill} onPress={() => setMenuOpen(false)} />}
+
       <SafeAreaView style={styles.topOverlay} edges={['top']} pointerEvents="box-none">
-        <View style={styles.topBar}>
-          <View style={styles.topBarLeft}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{(partner.name || '?').charAt(0).toUpperCase()}</Text>
+        <View style={styles.avatarWrap}>
+          <TouchableOpacity style={styles.avatar} onPress={() => setMenuOpen((open) => !open)}>
+            <Text style={styles.avatarText}>{(partner.name || '?').charAt(0).toUpperCase()}</Text>
+          </TouchableOpacity>
+
+          {menuOpen && (
+            <View style={styles.avatarMenu}>
+              <TouchableOpacity
+                style={styles.menuRow}
+                onPress={() => {
+                  setMenuOpen(false);
+                  handleStatusToggle();
+                }}
+                disabled={isUpdating}
+              >
+                {isUpdating ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <MaterialIcons name={isOnline ? 'wifi-off' : 'wifi'} size={18} color={colors.textPrimary} />
+                )}
+                <Text style={styles.menuRowText}>{isOnline ? 'Go offline' : 'Go online'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuRow}
+                onPress={() => {
+                  setMenuOpen(false);
+                  router.push('/(delivery)/earnings');
+                }}
+              >
+                <MaterialIcons name="account-balance-wallet" size={18} color={colors.textPrimary} />
+                <Text style={styles.menuRowText}>Wallet</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuRow}
+                onPress={() => {
+                  setMenuOpen(false);
+                  handleLogout();
+                }}
+              >
+                <MaterialIcons name="logout" size={18} color={colors.textPrimary} />
+                <Text style={styles.menuRowText}>Sign out</Text>
+              </TouchableOpacity>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.partnerName} numberOfLines={1}>
-                {partner.name}
-              </Text>
-              <View style={styles.statusRow}>
-                <View style={[styles.dot, isOnline && styles.dotActive]} />
-                <Text style={styles.statusText}>{isOnline ? "You're online" : "You're offline"}</Text>
-              </View>
-            </View>
-          </View>
-          <View style={styles.topBarRight}>
-            <TouchableOpacity
-              style={[styles.onlinePill, isOnline && styles.onlinePillActive]}
-              onPress={handleStatusToggle}
-              disabled={isUpdating}
-            >
-              {isUpdating ? (
-                <ActivityIndicator size="small" color={isOnline ? '#fff' : colors.primary} />
-              ) : (
-                <Text style={[styles.onlinePillText, isOnline && styles.onlinePillTextActive]}>
-                  {isOnline ? 'Go offline' : 'Go online'}
-                </Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.iconButton} onPress={handleLogout}>
-              <MaterialIcons name="logout" size={18} color={colors.textPrimary} />
-            </TouchableOpacity>
-          </View>
+          )}
         </View>
       </SafeAreaView>
 
@@ -385,7 +401,7 @@ export default function DashboardMapScreen() {
           >
             {hasActiveWork && (
               <View style={styles.section}>
-                <Text style={styles.sectionLabel}>My active deliveries</Text>
+                <SectionHeader title="My active deliveries" />
                 {activeAssignments.map((assignment) => (
                   <TouchableOpacity
                     key={assignment.assignmentId}
@@ -416,19 +432,13 @@ export default function DashboardMapScreen() {
 
             {!isOnline ? (
               <View style={styles.section}>
-                <View style={styles.offlineNotice}>
-                  <MaterialIcons name="wifi-off" size={22} color={colors.textMuted} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.offlineTitle}>You&apos;re offline</Text>
-                    <Text style={styles.offlineSubtitle}>Go online to see nearby single orders and batch runs on the map.</Text>
-                  </View>
-                </View>
+                <SectionEmpty icon="wifi-off" title="You're offline. Go online to see nearby single orders and batch runs on the map." />
               </View>
             ) : (
               <>
                 <View style={styles.section}>
-                  <Text style={styles.sectionLabel}>Available orders ({orders.length})</Text>
-                  {orders.length === 0 && !loading && <Text style={styles.emptyRow}>No orders nearby right now.</Text>}
+                  <SectionHeader title={`Available orders (${orders.length})`} />
+                  {orders.length === 0 && !loading && <SectionEmpty icon="explore" title="No orders nearby right now." />}
                   {orders.map((order) => (
                     <TouchableOpacity key={order.orderId} style={styles.itemCard} onPress={() => openOrderPreview(order)}>
                       <View style={{ flex: 1 }}>
@@ -441,8 +451,8 @@ export default function DashboardMapScreen() {
                 </View>
 
                 <View style={styles.section}>
-                  <Text style={styles.sectionLabel}>Available runs ({availableRuns.length})</Text>
-                  {availableRuns.length === 0 && !loading && <Text style={styles.emptyRow}>No runs nearby right now.</Text>}
+                  <SectionHeader title={`Available runs (${availableRuns.length})`} />
+                  {availableRuns.length === 0 && !loading && <SectionEmpty icon="local-shipping" title="No runs nearby right now." />}
                   {availableRuns.map((run) => (
                     <TouchableOpacity key={run.run_id} style={styles.itemCard} onPress={() => openRunPreview(run)}>
                       <View style={{ flex: 1 }}>
@@ -468,59 +478,31 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   topOverlay: { position: 'absolute', top: 0, left: 0, right: 0 },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginHorizontal: 12,
-    marginTop: 8,
-    padding: 10,
-    borderRadius: radius,
-    backgroundColor: colors.background,
-    ...shadow,
-  },
-  topBarLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  avatarWrap: { marginHorizontal: 12, marginTop: 8, alignItems: 'flex-start' },
   avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    ...shadow,
   },
   avatarText: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  partnerName: { ...typography.bodyBold, color: colors.textPrimary },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.textMuted },
-  dotActive: { backgroundColor: colors.primary },
-  statusText: { ...typography.caption, color: colors.textSecondary },
-  onlinePill: {
-    height: 36,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+  avatarMenu: {
+    marginTop: 8,
+    borderRadius: radius,
+    backgroundColor: colors.background,
+    paddingVertical: 6,
+    minWidth: 168,
+    ...shadow,
   },
-  onlinePillActive: { backgroundColor: colors.primary },
-  onlinePillText: { ...typography.caption, fontWeight: '700', color: colors.primary },
-  onlinePillTextActive: { color: '#fff' },
-  iconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  menuRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
+  menuRowText: { ...typography.body, color: colors.textPrimary },
   sheetBackground: { backgroundColor: colors.background, ...shadow },
   handle: { backgroundColor: colors.border, width: 40 },
   listContent: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 32 },
-  section: { marginBottom: 22 },
-  sectionLabel: { ...typography.label, color: colors.textMuted, marginBottom: 10 },
+  section: { marginBottom: 32 },
   activeCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -548,19 +530,6 @@ const styles = StyleSheet.create({
   itemMeta: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   runArea: { ...typography.bodyBold, color: colors.textPrimary },
   runPrice: { ...typography.subtitle, color: colors.primary },
-  emptyRow: { ...typography.secondary, color: colors.textMuted, paddingVertical: 8 },
-  offlineNotice: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    backgroundColor: colors.surface,
-    borderRadius: radius,
-    padding: 14,
-  },
-  offlineTitle: { ...typography.bodyBold, color: colors.textPrimary, marginBottom: 2 },
-  offlineSubtitle: { ...typography.caption, color: colors.textSecondary },
   previewSheet: { paddingHorizontal: 20, paddingTop: 4 },
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 14 },
   backText: { ...typography.secondary, color: colors.textSecondary },

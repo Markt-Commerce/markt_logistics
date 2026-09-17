@@ -1,16 +1,68 @@
 import {
   Assignment,
   AvailableRun,
+  Bank,
   DeliveryFailureReason,
   DeliveryPartner,
   Location,
   LoginResponse,
   Order,
+  Pagination,
+  ResolvedBankAccount,
   RunDetail,
+  WalletBalance,
+  WalletTransaction,
+  Withdrawal,
 } from '../types';
 
 // Source of truth: services/config.ts -- set EXPO_PUBLIC_API_URL per build.
 import { API_BASE_URL, API_HOST } from './config';
+
+// Not under /deliveries -- the wallet blueprint is a top-level resource
+// shared with buyers/sellers (app/wallet/ in markt_python). A delivery
+// partner's bearer token authenticates against it exactly the same way,
+// since Flask-Login's user_loader resolves either a User or a
+// DeliveryUser transparently. See REFACTOR_NOTES.md.
+//
+// Derived from API_HOST rather than written out, so a build pointed at a
+// different backend takes the wallet with it.
+const WALLET_BASE_URL = `${API_HOST}/api/v1/wallet`;
+
+function normalizePagination(raw: any): Pagination {
+  return {
+    page: raw?.page ?? 1,
+    perPage: raw?.per_page ?? 20,
+    totalItems: raw?.total_items ?? 0,
+    totalPages: raw?.total_pages ?? 0,
+  };
+}
+
+function normalizeTransaction(raw: any): WalletTransaction {
+  return {
+    id: raw.id,
+    type: raw.type,
+    amount: raw.amount,
+    balanceAfter: raw.balance_after,
+    referenceType: raw.reference_type,
+    referenceId: raw.reference_id,
+    description: raw.description,
+    createdAt: raw.created_at,
+  };
+}
+
+function normalizeWithdrawal(raw: any): Withdrawal {
+  return {
+    id: raw.id,
+    amount: raw.amount,
+    currency: raw.currency,
+    status: raw.status,
+    accountName: raw.account_name,
+    accountNumber: raw.account_number,
+    paystackTransferRef: raw.paystack_transfer_ref,
+    failureReason: raw.failure_reason,
+    createdAt: raw.created_at,
+  };
+}
 
 // --- Response normalizers -----------------------------------------------
 // markt_python's schemas (app/deliveries/schemas.py) use snake_case keys
@@ -472,6 +524,112 @@ class ApiService {
       });
     } catch (error) {
       console.warn('removePushToken failed:', error);
+    }
+  }
+
+  // --- Wallet / payout ---------------------------------------------------
+
+  async getWalletBalance(): Promise<WalletBalance> {
+    try {
+      const response = await fetch(`${WALLET_BASE_URL}/`, { headers: this.authHeaders() });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || `Failed to load wallet balance (${response.status})`);
+      return { currency: data.currency, availableBalance: data.available_balance };
+    } catch (error) {
+      console.error('getWalletBalance failed:', error);
+      throw error;
+    }
+  }
+
+  async getWalletTransactions(page = 1, perPage = 20): Promise<{ transactions: WalletTransaction[]; pagination: Pagination }> {
+    try {
+      const response = await fetch(`${WALLET_BASE_URL}/transactions?page=${page}&per_page=${perPage}`, {
+        headers: this.authHeaders(),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || `Failed to load wallet transactions (${response.status})`);
+      return {
+        transactions: (data.transactions || []).map(normalizeTransaction),
+        pagination: normalizePagination(data.pagination),
+      };
+    } catch (error) {
+      console.error('getWalletTransactions failed:', error);
+      throw error;
+    }
+  }
+
+  async getBanks(): Promise<Bank[]> {
+    try {
+      const response = await fetch(`${WALLET_BASE_URL}/banks`, { headers: this.authHeaders() });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || `Failed to load banks (${response.status})`);
+      return data.banks || [];
+    } catch (error) {
+      console.error('getBanks failed:', error);
+      throw error;
+    }
+  }
+
+  async resolveBankAccount(accountNumber: string, bankCode: string): Promise<ResolvedBankAccount> {
+    try {
+      const query = new URLSearchParams({ account_number: accountNumber, bank_code: bankCode });
+      const response = await fetch(`${WALLET_BASE_URL}/banks/resolve?${query.toString()}`, {
+        headers: this.authHeaders(),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to resolve account');
+      return {
+        accountNumber: data.account_number,
+        accountName: data.account_name,
+        bankCode: data.bank_code,
+        resolved: data.resolved,
+      };
+    } catch (error) {
+      console.error('resolveBankAccount failed:', error);
+      throw error;
+    }
+  }
+
+  async requestWithdrawal(data: {
+    amount: number;
+    bankCode: string;
+    accountNumber: string;
+    accountName: string;
+  }): Promise<Withdrawal> {
+    try {
+      const response = await fetch(`${WALLET_BASE_URL}/withdraw`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify({
+          amount: data.amount,
+          bank_code: data.bankCode,
+          account_number: data.accountNumber,
+          account_name: data.accountName,
+        }),
+      });
+      const raw = await response.json();
+      if (!response.ok) throw new Error(raw.message || 'Failed to request withdrawal');
+      return normalizeWithdrawal(raw);
+    } catch (error) {
+      console.error('requestWithdrawal failed:', error);
+      throw error;
+    }
+  }
+
+  async getWithdrawals(page = 1, perPage = 20): Promise<{ withdrawals: Withdrawal[]; pagination: Pagination }> {
+    try {
+      const response = await fetch(`${WALLET_BASE_URL}/withdrawals?page=${page}&per_page=${perPage}`, {
+        headers: this.authHeaders(),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || `Failed to load withdrawals (${response.status})`);
+      return {
+        withdrawals: (data.withdrawals || []).map(normalizeWithdrawal),
+        pagination: normalizePagination(data.pagination),
+      };
+    } catch (error) {
+      console.error('getWithdrawals failed:', error);
+      throw error;
     }
   }
 }
