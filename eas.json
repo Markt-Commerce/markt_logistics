@@ -10,17 +10,26 @@
       "environment": "development",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://test.api.marktcommerce.com"
       }
     },
     "preview": {
       "android": {
         "buildType": "apk"
       },
-      "node": "24.15.0"
+      "node": "24.15.0",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://test.api.marktcommerce.com"
+      }
     },
     "production": {
       "autoIncrement": true,
-      "environment": "production"
+      "environment": "production",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "SET_ME_BEFORE_RELEASE"
+      }
     }
   },
   "submit": {

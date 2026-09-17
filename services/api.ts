@@ -9,7 +9,8 @@ import {
   RunDetail,
 } from '../types';
 
-const API_BASE_URL = 'https://test.api.marktcommerce.com/api/v1/deliveries';
+// Source of truth: services/config.ts -- set EXPO_PUBLIC_API_URL per build.
+import { API_BASE_URL } from './config';
 
 // --- Response normalizers -----------------------------------------------
 // markt_python's schemas (app/deliveries/schemas.py) use snake_case keys
@@ -47,7 +48,9 @@ function normalizeAssignment(raw: any): Assignment {
 class ApiService {
   private sessionToken: string | null = null;
 
-  setSessionToken(token: string) {
+  /** null clears it -- signing out must not leave the old token on the
+   *  in-memory client, where the next request would still send it. */
+  setSessionToken(token: string | null) {
     this.sessionToken = token;
   }
 

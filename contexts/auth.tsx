@@ -1,6 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import apiService from '../services/api';
+import { clearAuthToken, getAuthToken, setAuthToken } from '../services/authStorage';
 
 interface AuthContextValue {
   isAuthenticated: boolean;
@@ -18,7 +18,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const token = await AsyncStorage.getItem('sessionToken');
+        const token = await getAuthToken();
         if (token) {
           apiService.setSessionToken(token);
           setIsAuthenticated(true);
@@ -32,13 +32,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = async (sessionToken: string) => {
-    await AsyncStorage.setItem('sessionToken', sessionToken);
+    await setAuthToken(sessionToken);
     apiService.setSessionToken(sessionToken);
     setIsAuthenticated(true);
   };
 
   const signOut = async () => {
-    await AsyncStorage.clear();
+    // Named keys, not AsyncStorage.clear(): clearing everything also throws
+    // away anything else the app keeps, now or later.
+    await clearAuthToken();
+    apiService.setSessionToken(null);
     setIsAuthenticated(false);
   };
 
