@@ -6,13 +6,55 @@ import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, Toucha
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../../components/Button';
 import SectionEmpty from '../../components/SectionEmpty';
+import EarningsSummary from '../../components/EarningsSummary';
 import SectionHeader from '../../components/SectionHeader';
 import StatusPill from '../../components/StatusPill';
-import { colors, radius, typography } from '../../components/theme';
+import { colors, radius, spacing, typography } from '../../components/theme';
 import apiService from '../../services/api';
 import { Bank, WalletTransaction, Withdrawal } from '../../types';
 
 type WithdrawStep = 'bank' | 'details';
+
+/** What a ledger row means, in the rider's words.
+ *
+ * The row used to print `description ?? referenceType`, so when the backend
+ * sent no description a rider read "delivery_earning" -- a column value. */
+const REFERENCE_LABELS: Record<string, string> = {
+  delivery_earning: 'Delivery earning',
+  DELIVERY_EARNING: 'Delivery earning',
+  withdrawal: 'Withdrawal to bank',
+  WITHDRAWAL: 'Withdrawal to bank',
+  refund: 'Refund',
+  REFUND: 'Refund',
+  adjustment: 'Adjustment',
+  ADJUSTMENT: 'Adjustment',
+};
+
+function labelFor(tx: WalletTransaction): string {
+  return (
+    REFERENCE_LABELS[tx.referenceType] ??
+    tx.description ??
+    tx.referenceType.replace(/_/g, ' ')
+  );
+}
+
+/** "Just now", "3h ago", "Yesterday", then the date.
+ *
+ * toLocaleString() printed the full date and time on every row, which is
+ * both long and the least useful form for the rows a rider actually looks
+ * at -- the ones from today. */
+function whenFor(iso: string | null): string {
+  if (!iso) return '';
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return '';
+
+  const minutes = Math.floor((Date.now() - at.getTime()) / 60000);
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60 * 24) return `${Math.floor(minutes / 60)}h ago`;
+  if (minutes < 60 * 48) return 'Yesterday';
+  return at.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
 
 /**
  * Rider payout screen -- balance, withdraw-to-bank, and a combined
@@ -50,7 +92,10 @@ export default function EarningsScreen() {
           console.error('Error loading wallet balance:', error);
           return null;
         }),
-        apiService.getWalletTransactions().catch((error) => {
+        // A bigger page than the list needs: EarningsSummary derives the
+        // week from these rows, so a 20-row default would quietly
+        // under-count a busy rider's week.
+        apiService.getWalletTransactions(1, 100).catch((error) => {
           console.error('Error loading wallet transactions:', error);
           return { transactions: [] as WalletTransaction[] };
         }),
@@ -152,12 +197,46 @@ export default function EarningsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <MaterialIcons name="arrow-back" size={22} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Earnings</Text>
-        <View style={{ width: 36 }} />
+      {/* The balance carried in a brand-filled header rather than a card on
+          a white page -- the same shape the shopper wallet uses, so the two
+          apps read as one product. */}
+      <View style={styles.hero}>
+        <View style={styles.heroBar}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+          >
+            <MaterialIcons name="arrow-back" size={22} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.heroTitle}>Earnings</Text>
+          <View style={{ width: 36 }} />
+        </View>
+
+        <Text style={styles.heroLabel}>Available to withdraw</Text>
+        {loading ? (
+          <ActivityIndicator color="#fff" style={{ marginVertical: 10 }} />
+        ) : (
+          <Text style={styles.heroValue}>
+            ₦{(balance ?? 0).toLocaleString()}
+          </Text>
+        )}
+
+        <Button
+          label="Withdraw to bank"
+          onPress={openWithdraw}
+          disabled={!balance}
+          variant="secondary"
+          style={styles.heroButton}
+          icon={
+            <MaterialIcons
+              name="account-balance"
+              size={18}
+              color={colors.textPrimary}
+            />
+          }
+        />
       </View>
 
       <ScrollView
@@ -165,17 +244,7 @@ export default function EarningsScreen() {
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}
       >
-        <View style={styles.balanceCard}>
-          <Text style={styles.balanceLabel}>Available balance</Text>
-          {loading ? (
-            <ActivityIndicator color={colors.primary} style={{ marginVertical: 8 }} />
-          ) : (
-            <Text style={styles.balanceValue}>
-              ₦{(balance ?? 0).toLocaleString()}
-            </Text>
-          )}
-          <Button label="Withdraw to bank" onPress={openWithdraw} disabled={!balance} style={styles.withdrawButton} />
-        </View>
+        <EarningsSummary transactions={transactions} />
 
         <View style={styles.section}>
           <SectionHeader title="Withdrawal requests" />
@@ -201,17 +270,39 @@ export default function EarningsScreen() {
           {transactions.length === 0 && !loading && (
             <SectionEmpty icon="receipt-long" title="Earnings from completed deliveries will show up here." />
           )}
-          {transactions.map((t) => (
-            <View key={t.id} style={styles.row}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.rowTitle}>{t.description ?? t.referenceType}</Text>
-                <Text style={styles.rowMeta}>{t.createdAt ? new Date(t.createdAt).toLocaleString() : ''}</Text>
+          {transactions.map((t) => {
+            const credit = t.type === 'credit';
+            return (
+              <View key={t.id} style={styles.row}>
+                <View
+                  style={[
+                    styles.txIcon,
+                    credit ? styles.txIconCredit : styles.txIconDebit,
+                  ]}
+                >
+                  <MaterialIcons
+                    name={credit ? 'arrow-downward' : 'arrow-upward'}
+                    size={16}
+                    color={credit ? colors.success : colors.textSecondary}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.rowTitle} numberOfLines={1}>
+                    {labelFor(t)}
+                  </Text>
+                  <Text style={styles.rowMeta}>{whenFor(t.createdAt)}</Text>
+                </View>
+                <Text
+                  style={[
+                    styles.txAmount,
+                    credit ? styles.txCredit : styles.txDebit,
+                  ]}
+                >
+                  {credit ? '+' : '-'}₦{t.amount.toLocaleString()}
+                </Text>
               </View>
-              <Text style={[styles.txAmount, t.type === 'credit' ? styles.txCredit : styles.txDebit]}>
-                {t.type === 'credit' ? '+' : '-'}₦{t.amount.toLocaleString()}
-              </Text>
-            </View>
-          ))}
+            );
+          })}
         </View>
       </ScrollView>
 
@@ -301,34 +392,56 @@ export default function EarningsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  header: {
+
+  hero: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.screenX,
+    paddingBottom: spacing.md,
+  },
+  heroBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    height: 48,
   },
   backButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.surface,
+    backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: { ...typography.subtitle, color: colors.textPrimary },
-  scrollContent: { paddingHorizontal: 20, paddingBottom: 40 },
-  balanceCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius,
-    padding: 24,
-    alignItems: 'center',
-    marginBottom: 36,
+  heroTitle: { ...typography.subtitle, color: '#fff' },
+  heroLabel: {
+    ...typography.caption,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: spacing.md,
   },
-  balanceLabel: { ...typography.caption, color: colors.textSecondary, marginBottom: 6 },
-  balanceValue: { ...typography.title, fontSize: 32, color: colors.textPrimary, marginBottom: 16 },
-  withdrawButton: { alignSelf: 'stretch' },
+  heroValue: {
+    ...typography.title,
+    fontSize: 38,
+    color: '#fff',
+    marginTop: 4,
+  },
+  heroButton: { alignSelf: 'stretch', marginTop: spacing.md },
+
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: spacing.section,
+    paddingBottom: 40,
+  },
   section: { marginBottom: 32 },
+
+  txIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  txIconCredit: { backgroundColor: '#E7F6EC' },
+  txIconDebit: { backgroundColor: colors.surface },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
