@@ -3,6 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { DeliveryStop } from '../types';
 import Button from './Button';
+import SectionHeader from './SectionHeader';
 import StatusPill from './StatusPill';
 import { colors, radius, shadow, typography } from './theme';
 
@@ -91,7 +92,7 @@ export default function ActiveDeliverySheet({
           ) : undefined
         }
       >
-        <Text style={styles.sectionLabel}>All stops ({stops.length})</Text>
+        <SectionHeader title={`All stops (${stops.length})`} />
         {stops.map((stop, index) => (
           <View key={stop.id} style={styles.stopRow}>
             <View style={styles.stopHeader}>
@@ -187,11 +188,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 32,
-  },
-  sectionLabel: {
-    ...typography.label,
-    color: colors.textMuted,
-    marginBottom: 10,
   },
   stopRow: {
     paddingVertical: 12,

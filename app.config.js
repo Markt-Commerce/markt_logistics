@@ -18,6 +18,11 @@ module.exports = {
       bundleIdentifier: 'com.marktcommerce.marktlogistics',
     },
     android: {
+      // Without this, the committed google-services.json is just a file in
+      // the repo: prebuild never writes it into the Android project, the
+      // build ships with no FCM sender, and push fails by never arriving --
+      // no build error, no runtime error, nothing in a log.
+      googleServicesFile: './google-services.json',
       adaptiveIcon: {
         backgroundColor: '#E6F4FE',
         foregroundImage: './assets/images/android-icon-foreground.png',
