@@ -221,3 +221,14 @@ export interface DeliveryStop {
   secondaryActionLabel?: string;
   onSecondaryAction?: () => void;
 }
+
+/** A hold on an order while the rider decides. */
+export interface OrderOffer {
+  assignmentId: string;
+  status: string;
+  /** ISO-8601, UTC, from the server. The countdown runs to this rather than
+   *  to a locally-started duration, so a slow response does not hand out
+   *  extra seconds and a wrong phone clock still expires on time. */
+  expiresAt: string;
+  seconds: number;
+}

@@ -7,6 +7,7 @@ import {
   Location,
   LoginResponse,
   Order,
+  OrderOffer,
   Pagination,
   ResolvedBankAccount,
   RunDetail,
@@ -95,6 +96,18 @@ function normalizeAssignment(raw: any): Assignment {
     dropoff: raw.dropoff,
     status: raw.status,
   };
+}
+
+/** Someone else took it, or the hold ran out.
+ *
+ * Its own type so callers can tell "this order is gone" -- which happens
+ * constantly and is nobody's fault -- apart from "the request failed",
+ * which is worth logging and retrying. */
+export class OrderTakenError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OrderTakenError';
+  }
 }
 
 class ApiService {
@@ -231,12 +244,49 @@ class ApiService {
     }
   }
 
+  /** Hold this order for this rider while they decide.
+   *
+   * The countdown on the accept card is only meaningful if the order is
+   * really held for those seconds. The response carries the server's expiry
+   * timestamp, and the app counts down to that rather than to a duration it
+   * starts locally -- a phone's clock can be minutes out and is the rider's
+   * to change.
+   *
+   * Throws OrderTakenError when someone else got there first, which is a
+   * normal thing to happen and not an error worth a crash report.
+   */
+  async offerOrder(orderId: string): Promise<OrderOffer> {
+    const response = await fetch(`${API_BASE_URL}/orders/${orderId}/offer`, {
+      method: 'POST',
+      headers: this.authHeaders(),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (response.status === 409) {
+      throw new OrderTakenError(data?.message || 'Someone else took this order');
+    }
+    if (!response.ok) {
+      throw new Error(`Failed to hold order: ${response.status}`);
+    }
+    return {
+      assignmentId: data.assignment_id,
+      status: data.status,
+      expiresAt: data.expires_at,
+      seconds: data.seconds ?? 30,
+    };
+  }
+
   async acceptOrder(orderId: string): Promise<Assignment | null> {
     try {
       const response = await fetch(`${API_BASE_URL}/orders/${orderId}/accept`, {
         method: 'POST',
         headers: this.authHeaders(),
       });
+      if (response.status === 409) {
+        // Another rider got there first, or this rider's hold ran out while
+        // the screen was open. Normal, and the caller shows it as such.
+        const data = await response.json().catch(() => ({}));
+        throw new OrderTakenError(data?.message || 'Someone else took this order');
+      }
       if (!response.ok) {
         throw new Error(`Failed to accept order: ${response.status}`);
       }
