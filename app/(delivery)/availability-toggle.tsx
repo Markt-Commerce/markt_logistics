@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import BottomSheet, { BottomSheetScrollView, BottomSheetView } from '@gorhom/bottom-sheet';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../../components/Button';
 import LiveMap from '../../components/LiveMap';
@@ -61,6 +61,18 @@ function riderTotal(run: AvailableRun): string {
   return '\u2014';
 }
 
+/** Mirrors offers.MAX_CONCURRENT_ORDERS in markt_python.
+ *
+ * The server is the authority and refuses the third order itself -- this
+ * copy exists only so the app can say so *before* a rider picks an order,
+ * reads it, and taps accept. Being told "finish what you are carrying"
+ * by a 409 at the end of that is being told the rule at the one moment
+ * it is no longer useful. If the two ever disagree the server still
+ * wins; the worst case is this card explaining a rule slightly early or
+ * slightly late, never one being enforced that the server would allow.
+ */
+const MAX_CONCURRENT_ORDERS = 2;
+
 export default function DashboardMapScreen() {
   const router = useRouter();
   const [partner, setPartner] = useState<any>(null);
@@ -86,6 +98,14 @@ export default function DashboardMapScreen() {
   const [acting, setActing] = useState(false);
   const sheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => ['20%', '52%', '88%'], []);
+
+  // How full the rider is. A delivery still counts while it is being
+  // carried and stops counting once it is COMPLETED -- the same test the
+  // server applies when it decides whether to allow another.
+  const carrying = activeAssignments.filter(
+    (assignment) => assignment.logisticalStatus !== 'COMPLETED'
+  ).length;
+  const atCapacity = carrying >= MAX_CONCURRENT_ORDERS;
 
   // Ref access lives here, outside render -- expands the sheet to show a
   // preview once something's selected (pin tap or sheet row tap), and back
@@ -230,11 +250,18 @@ export default function DashboardMapScreen() {
   // out of the render path.
   const openOrderPreview = (order: Order) => {
     setSelection({ kind: 'order', item: order });
+    setOffer(null);
+    setOfferError(null);
+
+    // A rider who is already full cannot accept this, so holding it would
+    // take it off every other rider's list for the length of a countdown
+    // that can only end one way. Show them the order, say why the button
+    // is off, and leave the order where someone can take it.
+    if (atCapacity) return;
+
     // Hold it while the rider reads. The countdown on the sheet is only
     // meaningful if the order is really held for those seconds, and the
     // expiry it counts to comes from the server -- see services/api.ts.
-    setOffer(null);
-    setOfferError(null);
     apiService
       .offerOrder(order.orderId)
       .then(setOffer)
@@ -408,7 +435,31 @@ export default function DashboardMapScreen() {
 
             {selection.kind === 'order' ? (
               <>
-                <Text style={styles.previewTitle}>Order #{selection.item.orderId.slice(0, 8)}</Text>
+                {/* What the job is, before the money. This card showed
+                    "Order #a1b2c3d4" and two numbers, and a rider had
+                    seconds to decide on it -- no shop, no street, nothing
+                    to recognise. The shop's name is the title now and the
+                    order id has moved to a line underneath, because the
+                    id is the one thing on here a rider cannot act on. */}
+                <View style={styles.previewHead}>
+                  {selection.item.sellerImage ? (
+                    <Image source={{ uri: selection.item.sellerImage }} style={styles.previewShopImage} />
+                  ) : (
+                    <View style={[styles.previewShopImage, styles.previewShopFallback]}>
+                      <MaterialIcons name="storefront" size={20} color={colors.textSecondary} />
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.previewTitle} numberOfLines={1}>
+                      {selection.item.sellerName || 'Pickup from seller'}
+                    </Text>
+                    <Text style={styles.previewSubtitle} numberOfLines={2}>
+                      {selection.item.pickupAddress ||
+                        `Order #${selection.item.orderId.slice(0, 8)}`}
+                    </Text>
+                  </View>
+                </View>
+
                 {offer && (
                   <OfferCountdown
                     expiresAt={offer.expiresAt}
@@ -428,12 +479,46 @@ export default function DashboardMapScreen() {
                   <Text style={styles.previewLabel}>Distance</Text>
                   <Text style={styles.previewValue}>{km(selection.item.distanceMeters)}</Text>
                 </View>
+                {/* A second shop is a second stop, and that is the
+                    difference between a ten-minute job and a half-hour
+                    one. Only shown when there is more than one, so the
+                    ordinary case stays quiet. */}
+                {(selection.item.pickupCount ?? 1) > 1 && (
+                  <View style={styles.previewRow}>
+                    <Text style={styles.previewLabel}>Pickups</Text>
+                    <Text style={styles.previewValue}>
+                      {selection.item.pickupCount} shops
+                    </Text>
+                  </View>
+                )}
+                {!!selection.item.itemCount && (
+                  <View style={styles.previewRow}>
+                    <Text style={styles.previewLabel}>Carrying</Text>
+                    <Text style={styles.previewValue}>
+                      {selection.item.itemCount}{' '}
+                      {selection.item.itemCount === 1 ? 'item' : 'items'}
+                    </Text>
+                  </View>
+                )}
+                {!!selection.item.dropoffArea && (
+                  <View style={styles.previewRow}>
+                    <Text style={styles.previewLabel}>Going to</Text>
+                    <Text style={styles.previewValue}>{selection.item.dropoffArea}</Text>
+                  </View>
+                )}
+                {atCapacity && (
+                  <Text style={styles.previewNotice}>
+                    You are carrying {carrying} already. Finish one and this
+                    is yours to take.
+                  </Text>
+                )}
                 <View style={styles.previewActions}>
                   <Button label="Decline" variant="outline" onPress={handleDeclineOrder} disabled={acting} style={{ flex: 1 }} />
                   <Button
                     label={offerError ? 'Back to list' : 'Accept order'}
                     onPress={offerError ? closePreview : handleAcceptOrder}
                     loading={acting}
+                    disabled={atCapacity && !offerError}
                     style={{ flex: 1 }}
                   />
                 </View>
@@ -482,6 +567,16 @@ export default function DashboardMapScreen() {
             {hasActiveWork && (
               <View style={styles.section}>
                 <SectionHeader title="My active deliveries" />
+                {/* How full they are, and what that means. The cap was
+                    enforced on the server and mentioned nowhere in the
+                    app, so the only way to learn it existed was to pick
+                    an order, read it, tap accept and be refused. */}
+                {atCapacity && (
+                  <Text style={styles.capacityNote}>
+                    You are carrying {carrying} of {MAX_CONCURRENT_ORDERS}. Finish
+                    one to take on more.
+                  </Text>
+                )}
                 {activeAssignments.map((assignment) => (
                   <TouchableOpacity
                     key={assignment.assignmentId}
@@ -489,8 +584,15 @@ export default function DashboardMapScreen() {
                     onPress={() => openActiveAssignment(assignment)}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.activeCardTitle}>Order #{assignment.orderId.slice(0, 8)}</Text>
-                      <StatusPill status={assignment.status} />
+                      <Text style={styles.activeCardTitle}>
+                        {assignment.sellerName || `Order #${assignment.orderId.slice(0, 8)}`}
+                      </Text>
+                      {/* The step, not the assignment status. This showed
+                          `status`, which reads ACCEPTED from the moment
+                          the job is taken until it is delivered -- so
+                          every active delivery on this list wore the same
+                          pill however far along it was. */}
+                      <StatusPill status={assignment.logisticalStatus || 'ACCEPTED'} />
                     </View>
                     <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} />
                   </TouchableOpacity>
@@ -575,8 +677,16 @@ export default function DashboardMapScreen() {
                           </View>
                           <Text style={styles.jobPay}>{money(order.estimatedEarnings)}</Text>
                         </View>
+                        {!!order.sellerName && (
+                          <Text style={styles.jobWhere} numberOfLines={1}>
+                            {order.sellerName}
+                          </Text>
+                        )}
                         <View style={styles.jobFoot}>
-                          <Text style={styles.jobMeta}>{km(order.distanceMeters)} to pick up</Text>
+                          <Text style={styles.jobMeta}>
+                            {km(order.distanceMeters)} to pick up
+                            {order.dropoffArea ? ` \u00b7 to ${order.dropoffArea}` : ''}
+                          </Text>
                           <Text style={styles.jobAction}>View</Text>
                         </View>
                       </TouchableOpacity>
@@ -668,6 +778,12 @@ const styles = StyleSheet.create({
     borderRadius: radius,
     padding: 14,
     marginBottom: 10,
+  },
+  capacityNote: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginBottom: 10,
+    lineHeight: 18,
   },
   activeCardTitle: { ...typography.bodyBold, color: colors.textPrimary, marginBottom: 6 },
   activeCardSubtitle: { ...typography.caption, color: colors.textSecondary },
@@ -770,7 +886,11 @@ const styles = StyleSheet.create({
   previewSheet: { paddingHorizontal: 20, paddingTop: 4 },
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 14 },
   backText: { ...typography.secondary, color: colors.textSecondary },
-  previewTitle: { ...typography.subtitle, color: colors.textPrimary, marginBottom: 16 },
+  previewHead: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
+  previewShopImage: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.border },
+  previewShopFallback: { alignItems: 'center', justifyContent: 'center' },
+  previewTitle: { ...typography.subtitle, color: colors.textPrimary },
+  previewSubtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   previewRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

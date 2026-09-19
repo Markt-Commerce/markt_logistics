@@ -54,6 +54,15 @@ export default function ProfileScreen() {
   const [vehicle, setVehicle] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // The photo they just chose, shown while it uploads. Without it the
+  // avatar sat on the old picture (or the initial) through the whole
+  // upload, so the one signal that the right file was picked arrived
+  // only once it was already too late to change.
+  const [pendingPhoto, setPendingPhoto] = useState<string | null>(null);
+  // A stored URL can 404 -- the file was cleaned up, the CDN moved. An
+  // <Image> that fails to load renders as a blank box; falling back to
+  // the initial at least looks deliberate.
+  const [photoBroken, setPhotoBroken] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -120,12 +129,18 @@ export default function ProfileScreen() {
 
     setUploading(true);
     setNotice(null);
+    setPendingPhoto(picked.assets[0].uri);
     try {
       const url = await apiService.uploadProfilePhoto(picked.assets[0].uri);
+      setPhotoBroken(false);
       setPartner((current) =>
         current ? { ...current, profile_picture: url } : current
       );
     } catch (error: any) {
+      // Drop the preview on failure. Leaving it up shows a picture that
+      // is not saved anywhere, and the next screen they open will
+      // silently disagree with this one.
+      setPendingPhoto(null);
       setNotice(error?.message || 'Could not upload that photo.');
     } finally {
       setUploading(false);
@@ -155,6 +170,10 @@ export default function ProfileScreen() {
   }
 
   const initial = (partner?.name || '?').charAt(0).toUpperCase();
+  // The picked file wins while it is in flight, then the saved URL takes
+  // over -- so the avatar never flickers back to the old photo in the
+  // gap between the upload finishing and the profile reloading.
+  const photo = pendingPhoto ?? (photoBroken ? null : partner?.profile_picture) ?? null;
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -184,8 +203,12 @@ export default function ProfileScreen() {
               accessibilityRole="button"
               accessibilityLabel="Change your photo"
             >
-              {partner?.profile_picture ? (
-                <Image source={{ uri: partner.profile_picture }} style={styles.avatar} />
+              {photo ? (
+                <Image
+                  source={{ uri: photo }}
+                  style={[styles.avatar, uploading && styles.avatarUploading]}
+                  onError={() => setPhotoBroken(true)}
+                />
               ) : (
                 <View style={[styles.avatar, styles.avatarEmpty]}>
                   <Text style={styles.avatarInitial}>{initial}</Text>
@@ -294,6 +317,9 @@ const styles = StyleSheet.create({
   identity: { alignItems: 'center', paddingVertical: spacing.md },
   avatarWrap: { width: AVATAR, height: AVATAR },
   avatar: { width: AVATAR, height: AVATAR, borderRadius: AVATAR / 2 },
+  // Dimmed while the upload is in flight, so the preview reads as "this
+  // is going" rather than "this is done".
+  avatarUploading: { opacity: 0.55 },
   avatarEmpty: {
     backgroundColor: colors.primaryMuted,
     alignItems: 'center',
