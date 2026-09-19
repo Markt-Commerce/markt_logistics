@@ -132,13 +132,24 @@ export default function ActiveDeliveryScreen() {
   }
 
   if (stops.length === 0) {
+    // Two ways to land here, and they mean different things. Arriving
+    // with an id and finding nothing means the delivery is over. Arriving
+    // with no id at all means the rider tapped the tab, which is now a
+    // permanent destination rather than something you are pushed into --
+    // telling them their delivery "may have already been completed" when
+    // they never had one is answering a question nobody asked.
+    const idle = !id;
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <EmptyState
-          icon="local-shipping"
-          title="Nothing active here"
-          subtitle="This delivery may have already been completed, or is no longer available."
-          actionLabel="Back to dashboard"
+          icon={idle ? 'explore' : 'local-shipping'}
+          title={idle ? "You're not carrying anything" : 'Nothing active here'}
+          subtitle={
+            idle
+              ? 'Deliveries you accept show up here, with the route and every stop.'
+              : 'This delivery may have already been completed, or is no longer available.'
+          }
+          actionLabel={idle ? 'Find work' : 'Back to dashboard'}
           onAction={() => router.replace('/(delivery)/availability-toggle')}
         />
       </SafeAreaView>

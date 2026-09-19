@@ -54,20 +54,28 @@ export function assignmentToStops(assignment: Assignment, ctx: AssignmentStopsCo
     {
       id: 'pickup',
       kind: 'pickup',
-      title: 'Pickup from seller',
-      subtitle: orderTag,
+      // The shop's real name where the backend knows it. This said
+      // "Pickup from seller" for every order, because the assignment
+      // payload carried two coordinates and nothing else.
+      title: assignment.sellerName || 'Pickup from seller',
+      // The address, where we have one. The order id was printed under
+      // both stops, which told the rider the same thing twice and neither
+      // time anything they could navigate to.
+      subtitle: assignment.pickupAddress || orderTag,
       coords: assignment.pickup,
       status: pickupStatus,
+      phone: assignment.sellerPhone,
       primaryActionLabel: pickupActionLabel,
       onPrimaryAction: pickupAction,
     },
     {
       id: 'dropoff',
       kind: 'dropoff',
-      title: 'Deliver to buyer',
-      subtitle: orderTag,
+      title: assignment.buyerName || 'Deliver to buyer',
+      subtitle: assignment.dropoffAddress || orderTag,
       coords: assignment.dropoff,
       status: dropoffStatus,
+      phone: assignment.buyerPhone,
       primaryActionLabel: dropoffActionLabel,
       onPrimaryAction: dropoffAction,
     },

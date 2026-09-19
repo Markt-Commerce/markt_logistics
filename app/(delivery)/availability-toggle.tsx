@@ -11,8 +11,7 @@ import OfferCountdown from '../../components/OfferCountdown';
 import SectionEmpty from '../../components/SectionEmpty';
 import SectionHeader from '../../components/SectionHeader';
 import StatusPill from '../../components/StatusPill';
-import { colors, radius, shadow, typography } from '../../components/theme';
-import { useAuth } from '../../contexts/auth';
+import { colors, radius, shadow, spacing, typography } from '../../components/theme';
 import { useReportLocation } from '../../hooks/useReportLocation';
 import apiService, { OrderTakenError } from '../../services/api';
 import {
@@ -64,7 +63,6 @@ function riderTotal(run: AvailableRun): string {
 
 export default function DashboardMapScreen() {
   const router = useRouter();
-  const { signOut } = useAuth();
   const [partner, setPartner] = useState<any>(null);
   const [isOnline, setIsOnline] = useState(false);
 
@@ -84,8 +82,8 @@ export default function DashboardMapScreen() {
   const [offer, setOffer] = useState<OrderOffer | null>(null);
   const [offerError, setOfferError] = useState<string | null>(null);
   const [loadProblem, setLoadProblem] = useState<string | null>(null);
+  const [tab, setTab] = useState<'orders' | 'runs'>('orders');
   const [acting, setActing] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const sheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => ['20%', '52%', '88%'], []);
 
@@ -217,19 +215,6 @@ export default function DashboardMapScreen() {
     }
   };
 
-  const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Logout',
-        style: 'destructive',
-        onPress: async () => {
-          await signOut();
-          router.replace('/(auth)/login');
-        },
-      },
-    ]);
-  };
 
   const openActiveAssignment = (assignment: Assignment) =>
     router.push({ pathname: '/(delivery)/active-delivery', params: { kind: 'order', id: assignment.assignmentId } });
@@ -379,54 +364,30 @@ export default function DashboardMapScreen() {
     <View style={styles.container}>
       <LiveMap stops={pins} />
 
-      {menuOpen && <Pressable style={StyleSheet.absoluteFill} onPress={() => setMenuOpen(false)} />}
 
       <SafeAreaView style={styles.topOverlay} edges={['top']} pointerEvents="box-none">
-        <View style={styles.avatarWrap}>
-          <TouchableOpacity style={styles.avatar} onPress={() => setMenuOpen((open) => !open)}>
-            <Text style={styles.avatarText}>{(partner.name || '?').charAt(0).toUpperCase()}</Text>
-          </TouchableOpacity>
-
-          {menuOpen && (
-            <View style={styles.avatarMenu}>
-              <TouchableOpacity
-                style={styles.menuRow}
-                onPress={() => {
-                  setMenuOpen(false);
-                  handleStatusToggle();
-                }}
-                disabled={isUpdating}
-              >
-                {isUpdating ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : (
-                  <MaterialIcons name={isOnline ? 'wifi-off' : 'wifi'} size={18} color={colors.textPrimary} />
-                )}
-                <Text style={styles.menuRowText}>{isOnline ? 'Go offline' : 'Go online'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.menuRow}
-                onPress={() => {
-                  setMenuOpen(false);
-                  router.push('/(delivery)/earnings');
-                }}
-              >
-                <MaterialIcons name="account-balance-wallet" size={18} color={colors.textPrimary} />
-                <Text style={styles.menuRowText}>Wallet</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.menuRow}
-                onPress={() => {
-                  setMenuOpen(false);
-                  handleLogout();
-                }}
-              >
-                <MaterialIcons name="logout" size={18} color={colors.textPrimary} />
-                <Text style={styles.menuRowText}>Sign out</Text>
-              </TouchableOpacity>
-            </View>
+        {/* Online/offline is the one control that belongs on the map:
+            a rider changes it constantly and it governs everything on this
+            screen. Wallet, profile and sign-out moved to the tab bar,
+            where they are labelled and one tap away rather than hidden
+            behind an unlabelled avatar. */}
+        <Pressable
+          style={[styles.statusPill, isOnline && styles.statusPillOn]}
+          onPress={handleStatusToggle}
+          disabled={isUpdating}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: isOnline, disabled: isUpdating }}
+          accessibilityLabel={isOnline ? 'Go offline' : 'Go online'}
+        >
+          {isUpdating ? (
+            <ActivityIndicator size="small" color={isOnline ? '#fff' : colors.primary} />
+          ) : (
+            <View style={[styles.statusDot, isOnline && styles.statusDotOn]} />
           )}
-        </View>
+          <Text style={[styles.statusText, isOnline && styles.statusTextOn]}>
+            {isOnline ? "You're online" : "You're offline"}
+          </Text>
+        </Pressable>
       </SafeAreaView>
 
       <BottomSheet
@@ -555,76 +516,110 @@ export default function DashboardMapScreen() {
               </View>
             ) : (
               <>
-                <View style={styles.section}>
-                  <SectionHeader title={`Available orders (${orders.length})`} />
-                  {orders.length === 0 && !loading && (
-                    <SectionEmpty
-                      icon={loadProblem ? 'location-off' : 'explore'}
-                      title={loadProblem ?? 'No orders nearby right now.'}
-                    />
-                  )}
-                  {orders.map((order) => (
-                    <TouchableOpacity
-                      key={order.orderId}
-                      style={styles.jobCard}
-                      onPress={() => openOrderPreview(order)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Single order, ${money(order.estimatedEarnings)}, ${km(order.distanceMeters)} away`}
-                    >
-                      <View style={styles.jobHead}>
-                        <View style={styles.jobBadge}>
-                          <MaterialIcons name="two-wheeler" size={14} color={colors.textSecondary} />
-                          <Text style={styles.jobBadgeText}>Single order</Text>
-                        </View>
-                        <Text style={styles.jobPay}>{money(order.estimatedEarnings)}</Text>
-                      </View>
-                      <View style={styles.jobFoot}>
-                        <Text style={styles.jobMeta}>{km(order.distanceMeters)} to pick up</Text>
-                        <Text style={styles.jobAction}>View</Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                <View style={styles.section}>
-                  <SectionHeader title={`Available runs (${availableRuns.length})`} />
-                  {availableRuns.length === 0 && !loading && <SectionEmpty icon="local-shipping" title="No runs nearby right now." />}
-                  {availableRuns.map((run) => (
-                    <TouchableOpacity
-                      key={run.run_id}
-                      style={styles.jobCard}
-                      onPress={() => openRunPreview(run)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Run of ${run.order_count} orders, ${riderTotal(run)} total`}
-                    >
-                      <View style={styles.jobHead}>
-                        <View style={styles.jobBadge}>
-                          <MaterialIcons name="local-shipping" size={14} color={colors.textSecondary} />
-                          <Text style={styles.jobBadgeText}>
-                            {run.order_count} {run.order_count === 1 ? 'drop' : 'drops'}
+                {/* One segment, not two stacked lists. A rider is choosing
+                    between two kinds of work, and stacking them meant
+                    scrolling past an empty "Available orders (0)" to find
+                    out whether there were any runs. Both counts show at
+                    once now. */}
+                <View style={styles.segment}>
+                  {(['orders', 'runs'] as const).map((key) => {
+                    const active = tab === key;
+                    const count =
+                      key === 'orders' ? orders.length : availableRuns.length;
+                    return (
+                      <Pressable
+                        key={key}
+                        style={[styles.segmentTab, active && styles.segmentTabOn]}
+                        onPress={() => setTab(key)}
+                        accessibilityRole="tab"
+                        accessibilityState={{ selected: active }}
+                      >
+                        <Text style={[styles.segmentText, active && styles.segmentTextOn]}>
+                          {key === 'orders' ? 'Single orders' : 'Batched runs'}
+                        </Text>
+                        <View style={[styles.segmentCount, active && styles.segmentCountOn]}>
+                          <Text
+                            style={[
+                              styles.segmentCountText,
+                              active && styles.segmentCountTextOn,
+                            ]}
+                          >
+                            {count}
                           </Text>
                         </View>
-                        {/* The total, not price_per_order. That is what each
-                            buyer pays towards the run; the rider takes a
-                            share of the trip, and the total is what makes a
-                            run worth more than a single order. */}
-                        <Text style={styles.jobPay}>{riderTotal(run)}</Text>
-                      </View>
-                      <Text style={styles.jobWhere} numberOfLines={1}>
-                        {run.market ? `${run.market} · ${run.area}` : run.area}
-                      </Text>
-                      <View style={styles.jobFoot}>
-                        <Text style={styles.jobMeta}>
-                          {km(run.distance_meters)} away
-                          {run.rider_earning_per_drop != null
-                            ? ` · ${money(run.rider_earning_per_drop)} a drop`
-                            : ''}
-                        </Text>
-                        <Text style={styles.jobAction}>View</Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
+                      </Pressable>
+                    );
+                  })}
                 </View>
+
+                {tab === 'orders' ? (
+                  <View style={styles.section}>
+                    {orders.length === 0 && !loading && (
+                      <SectionEmpty
+                        icon={loadProblem ? 'location-off' : 'explore'}
+                        title={loadProblem ?? 'No orders nearby right now.'}
+                      />
+                    )}
+                    {orders.map((order) => (
+                      <TouchableOpacity
+                        key={order.orderId}
+                        style={styles.jobCard}
+                        onPress={() => openOrderPreview(order)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Single order, ${money(order.estimatedEarnings)}, ${km(order.distanceMeters)} away`}
+                      >
+                        <View style={styles.jobHead}>
+                          <View style={styles.jobBadge}>
+                            <MaterialIcons name="two-wheeler" size={14} color={colors.textSecondary} />
+                            <Text style={styles.jobBadgeText}>Single order</Text>
+                          </View>
+                          <Text style={styles.jobPay}>{money(order.estimatedEarnings)}</Text>
+                        </View>
+                        <View style={styles.jobFoot}>
+                          <Text style={styles.jobMeta}>{km(order.distanceMeters)} to pick up</Text>
+                          <Text style={styles.jobAction}>View</Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : (
+                  <View style={styles.section}>
+                    {availableRuns.length === 0 && !loading && (
+                      <SectionEmpty icon="local-shipping" title="No runs nearby right now." />
+                    )}
+                    {availableRuns.map((run) => (
+                      <TouchableOpacity
+                        key={run.run_id}
+                        style={styles.jobCard}
+                        onPress={() => openRunPreview(run)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Run of ${run.order_count} orders, ${riderTotal(run)} total`}
+                      >
+                        <View style={styles.jobHead}>
+                          <View style={styles.jobBadge}>
+                            <MaterialIcons name="local-shipping" size={14} color={colors.textSecondary} />
+                            <Text style={styles.jobBadgeText}>
+                              {run.order_count} {run.order_count === 1 ? 'drop' : 'drops'}
+                            </Text>
+                          </View>
+                          <Text style={styles.jobPay}>{riderTotal(run)}</Text>
+                        </View>
+                        <Text style={styles.jobWhere} numberOfLines={1}>
+                          {run.market ? `${run.market} \u00b7 ${run.area}` : run.area}
+                        </Text>
+                        <View style={styles.jobFoot}>
+                          <Text style={styles.jobMeta}>
+                            {km(run.distance_meters)} away
+                            {run.rider_earning_per_drop != null
+                              ? ` \u00b7 ${money(run.rider_earning_per_drop)} a drop`
+                              : ''}
+                          </Text>
+                          <Text style={styles.jobAction}>View</Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
               </>
             )}
           </BottomSheetScrollView>
@@ -679,9 +674,70 @@ const styles = StyleSheet.create({
   // One card shape for both kinds of work, so a rider comparing a single
   // order against a run is comparing like with like. What it pays is the
   // biggest thing on it, because that is what the decision turns on.
-  jobCard: {
+  // The online/offline control, on the map where it is used.
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    margin: spacing.screenX,
+    paddingHorizontal: 16,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.border,
+    ...shadow,
+  },
+  statusPillOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.textMuted,
+  },
+  statusDotOn: { backgroundColor: '#fff' },
+  statusText: { ...typography.caption, fontWeight: '700', color: colors.textSecondary },
+  statusTextOn: { color: '#fff' },
+
+  segment: {
+    flexDirection: 'row',
+    gap: 6,
+    backgroundColor: colors.surface,
+    borderRadius: radius,
+    padding: 4,
+    marginBottom: spacing.md,
+  },
+  segmentTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 38,
+    borderRadius: 6,
+  },
+  segmentTabOn: { backgroundColor: colors.background, ...shadow },
+  segmentText: { ...typography.caption, fontWeight: '600', color: colors.textSecondary },
+  segmentTextOn: { color: colors.textPrimary, fontWeight: '700' },
+  segmentCount: {
+    minWidth: 20,
+    paddingHorizontal: 5,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceDim,
+  },
+  segmentCountOn: { backgroundColor: colors.primary },
+  segmentCountText: { fontSize: 11, fontWeight: '700', color: colors.textSecondary },
+  segmentCountTextOn: { color: '#fff' },
+
+  // Same reasoning as EarningsSummary's card: an outline around every
+  // job turned a list of work into a stack of rectangles. The surface and
+  // the gap between them are enough to read as separate cards.
+  jobCard: {
+    backgroundColor: colors.surface,
     borderRadius: radius,
     padding: 14,
     marginBottom: 10,

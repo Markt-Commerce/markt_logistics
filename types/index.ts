@@ -4,6 +4,10 @@ export interface DeliveryPartner {
   vehicleType: 'BIKE' | 'SCOOTER' | 'CAR';
   rating: number;
   status?: 'ONLINE' | 'OFFLINE';
+  email?: string | null;
+  phone_number?: string | null;
+  /** URL of the rider's photo, or null if they have not set one. */
+  profile_picture?: string | null;
 }
 
 // --- Wallet / payout (2026-09-17) ---------------------------------------
@@ -95,9 +99,19 @@ export interface Order {
 export interface Assignment {
   assignmentId: string;
   orderId: string;
+  orderNumber?: string | null;
   pickup: { lat: number; lng: number };
   dropoff: { lat: number; lng: number };
   status: string;
+  /** Who is at each end, and how to reach them. A run's stops have carried
+   *  these since runs existed; a single order carried two coordinates, so
+   *  the app could only print "Pickup from seller". */
+  sellerName?: string | null;
+  pickupAddress?: string | null;
+  sellerPhone?: string | null;
+  buyerName?: string | null;
+  dropoffAddress?: string | null;
+  buyerPhone?: string | null;
 }
 
 export interface LoginResponse {
@@ -220,6 +234,9 @@ export interface DeliveryStop {
   // delivery-confirm action.
   secondaryActionLabel?: string;
   onSecondaryAction?: () => void;
+  /** Someone to call when the shop is shut or nobody answers the gate.
+   *  Absent when the backend has no number for this end. */
+  phone?: string | null;
 }
 
 /** A hold on an order while the rider decides. */

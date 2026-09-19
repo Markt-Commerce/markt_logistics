@@ -1,7 +1,7 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import BottomSheet, { BottomSheetScrollView, BottomSheetView } from '@gorhom/bottom-sheet';
 import React, { useMemo, useState } from 'react';
-import { RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { DeliveryStop } from '../types';
 import Button from './Button';
 import SectionHeader from './SectionHeader';
@@ -81,7 +81,13 @@ export default function ActiveDeliverySheet({
       handleIndicatorStyle={styles.handle}
       backgroundStyle={styles.sheetBackground}
     >
-      <BottomSheetView style={styles.summary}>
+      {/* One BottomSheetView wrapping both. A BottomSheetView and a
+          BottomSheetScrollView as siblings do not lay out against each
+          other -- the summary rendered on top of the list, so the title,
+          the route heading and the first stop all printed over one
+          another. */}
+      <BottomSheetView style={styles.sheetBody}>
+      <View style={styles.summary}>
         <Text style={styles.headerTitle}>{headerTitle}</Text>
         {!!headerSubtitle && <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>}
 
@@ -119,7 +125,7 @@ export default function ActiveDeliverySheet({
         ) : (
           <Text style={styles.nextTitle}>All stops handled</Text>
         )}
-      </BottomSheetView>
+      </View>
 
       <BottomSheetScrollView
         style={{ flex: 1 }}
@@ -169,9 +175,27 @@ export default function ActiveDeliverySheet({
                 )}
               </View>
               <View style={{ flex: 1, paddingBottom: last ? 0 : 4 }}>
-                <Text style={styles.stopKind}>
-                  {stop.kind === 'pickup' ? 'PICK UP' : 'DROP OFF'}
-                </Text>
+                <View style={styles.stopTopRow}>
+                  <Text style={styles.stopKind}>
+                    {stop.kind === 'pickup' ? 'PICK UP' : 'DROP OFF'}
+                  </Text>
+                  {/* A rider outside a shut shop, or at a gate with nobody
+                      answering, has no other move. Hidden rather than
+                      disabled when there is no number: a call button that
+                      does nothing is worse than none. */}
+                  {!!stop.phone && !done && (
+                    <Pressable
+                      style={styles.callButton}
+                      onPress={() => Linking.openURL(`tel:${stop.phone}`)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Call ${stop.title}`}
+                      hitSlop={8}
+                    >
+                      <MaterialIcons name="call" size={15} color={colors.primary} />
+                      <Text style={styles.callText}>Call</Text>
+                    </Pressable>
+                  )}
+                </View>
                 <Text style={[styles.stopTitle, done && styles.stopTitleDone]}>
                   {stop.title}
                 </Text>
@@ -179,7 +203,11 @@ export default function ActiveDeliverySheet({
                 <StatusPill status={stop.status} />
               </View>
             </View>
-            {(stop.onPrimaryAction || stop.onSecondaryAction) && (
+            {/* The next stop's action is already the big button in the
+                summary above. Repeating it here put two identical
+                "Arrived at pickup" buttons on screen, one of them the
+                wrong weight. The secondary action still shows. */}
+            {((stop.onPrimaryAction && !isNext) || stop.onSecondaryAction) && (
               <View style={styles.stopActions}>
                 {stop.onSecondaryAction && (
                   <Button
@@ -189,7 +217,7 @@ export default function ActiveDeliverySheet({
                     style={{ flex: 1 }}
                   />
                 )}
-                {stop.onPrimaryAction && (
+                {stop.onPrimaryAction && !isNext && (
                   <Button
                     label={stop.primaryActionLabel ?? 'Continue'}
                     onPress={() => runStopAction(stop)}
@@ -213,6 +241,7 @@ export default function ActiveDeliverySheet({
           />
         )}
       </BottomSheetScrollView>
+      </BottomSheetView>
     </BottomSheet>
   );
 }
@@ -226,6 +255,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
     width: 40,
   },
+  sheetBody: { flex: 1 },
   summary: {
     paddingHorizontal: 20,
     paddingBottom: 12,
@@ -321,6 +351,21 @@ const styles = StyleSheet.create({
   },
   railLineDone: { backgroundColor: colors.textMuted },
 
+  stopTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  callButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: colors.primaryMuted,
+  },
+  callText: { ...typography.caption, fontWeight: '700', color: colors.primary },
   stopKind: {
     ...typography.label,
     fontSize: 10,
