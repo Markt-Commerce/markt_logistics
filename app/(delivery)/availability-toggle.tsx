@@ -7,13 +7,21 @@ import { ActivityIndicator, Alert, Pressable, RefreshControl, StyleSheet, Text, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../../components/Button';
 import LiveMap from '../../components/LiveMap';
+import OfferCountdown from '../../components/OfferCountdown';
 import SectionEmpty from '../../components/SectionEmpty';
 import SectionHeader from '../../components/SectionHeader';
 import StatusPill from '../../components/StatusPill';
 import { colors, radius, shadow, typography } from '../../components/theme';
 import { useAuth } from '../../contexts/auth';
-import apiService from '../../services/api';
-import { Assignment, AvailableRun, DeliveryStop, Order, RunDetail } from '../../types';
+import apiService, { OrderTakenError } from '../../services/api';
+import {
+  Assignment,
+  AvailableRun,
+  DeliveryStop,
+  Order,
+  OrderOffer,
+  RunDetail,
+} from '../../types';
 import { activeAssignmentsToPins, activeRunToPins, availableOrdersToPins, availableRunsToPins } from '../../utils/deliveryStops';
 
 type Selection = { kind: 'order'; item: Order } | { kind: 'run'; item: AvailableRun };
@@ -68,6 +76,8 @@ export default function DashboardMapScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const [selection, setSelection] = useState<Selection | null>(null);
+  const [offer, setOffer] = useState<OrderOffer | null>(null);
+  const [offerError, setOfferError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const sheetRef = useRef<BottomSheet>(null);
@@ -217,9 +227,46 @@ export default function DashboardMapScreen() {
   // pin-adapter callbacks built during render (see `pins` below). The sheet
   // itself is snapped to the right point in the effect above instead, kept
   // out of the render path.
-  const openOrderPreview = (order: Order) => setSelection({ kind: 'order', item: order });
+  const openOrderPreview = (order: Order) => {
+    setSelection({ kind: 'order', item: order });
+    // Hold it while the rider reads. The countdown on the sheet is only
+    // meaningful if the order is really held for those seconds, and the
+    // expiry it counts to comes from the server -- see services/api.ts.
+    setOffer(null);
+    setOfferError(null);
+    apiService
+      .offerOrder(order.orderId)
+      .then(setOffer)
+      .catch((error) => {
+        if (error instanceof OrderTakenError) {
+          // Normal. Somebody was quicker, or this rider passed recently.
+          setOfferError(error.message);
+          load();
+        } else {
+          // The hold failed for some other reason. Let them try to accept
+          // anyway rather than blocking on a countdown we could not start:
+          // accept re-checks server-side regardless.
+          console.warn('Could not hold order:', error);
+        }
+      });
+  };
   const openRunPreview = (run: AvailableRun) => setSelection({ kind: 'run', item: run });
-  const closePreview = () => setSelection(null);
+  const closePreview = () => {
+    setSelection(null);
+    setOffer(null);
+    setOfferError(null);
+  };
+
+  /** The hold ran out while the sheet was open.
+   *
+   * Nothing has to happen for the order to be released -- the server let it
+   * go by the clock. This just stops showing a rider an accept button that
+   * would now lose a race, and puts the order back in the list. */
+  const handleOfferExpired = () => {
+    setOfferError('Time is up. This order is back in the list.');
+    setOffer(null);
+    load();
+  };
 
   const handleAcceptOrder = async () => {
     if (selection?.kind !== 'order') return;
@@ -233,7 +280,16 @@ export default function DashboardMapScreen() {
       }
       load();
     } catch (error) {
-      console.error('Error accepting order:', error);
+      if (error instanceof OrderTakenError) {
+        // Someone else got there first, or the hold lapsed between the tap
+        // and the request landing. Not a failure worth an error dialog.
+        setOfferError(error.message);
+        setOffer(null);
+        load();
+      } else {
+        console.error('Error accepting order:', error);
+        setOfferError('Could not accept that. Try again.');
+      }
     } finally {
       setActing(false);
     }
@@ -376,6 +432,15 @@ export default function DashboardMapScreen() {
             {selection.kind === 'order' ? (
               <>
                 <Text style={styles.previewTitle}>Order #{selection.item.orderId.slice(0, 8)}</Text>
+                {offer && (
+                  <OfferCountdown
+                    expiresAt={offer.expiresAt}
+                    total={offer.seconds}
+                    onExpire={handleOfferExpired}
+                  />
+                )}
+                {offerError && <Text style={styles.previewNotice}>{offerError}</Text>}
+
                 <View style={styles.previewRow}>
                   <Text style={styles.previewLabel}>You earn</Text>
                   <Text style={styles.previewValueStrong}>
@@ -388,7 +453,12 @@ export default function DashboardMapScreen() {
                 </View>
                 <View style={styles.previewActions}>
                   <Button label="Decline" variant="outline" onPress={handleDeclineOrder} disabled={acting} style={{ flex: 1 }} />
-                  <Button label="Accept order" onPress={handleAcceptOrder} loading={acting} style={{ flex: 1 }} />
+                  <Button
+                    label={offerError ? 'Back to list' : 'Accept order'}
+                    onPress={offerError ? closePreview : handleAcceptOrder}
+                    loading={acting}
+                    style={{ flex: 1 }}
+                  />
                 </View>
               </>
             ) : (
@@ -633,6 +703,15 @@ const styles = StyleSheet.create({
   },
   previewLabel: { ...typography.secondary, color: colors.textSecondary },
   previewValue: { ...typography.bodyBold, color: colors.textPrimary },
+  previewNotice: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    backgroundColor: colors.surface,
+    borderRadius: radius,
+    padding: 10,
+    marginBottom: 12,
+    lineHeight: 17,
+  },
   previewValueStrong: { ...typography.subtitle, color: colors.primary },
   previewActions: { flexDirection: 'row', gap: 12, marginTop: 20, marginBottom: 12 },
 });
