@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, useAuth } from '../contexts/auth';
+import { colors } from '../components/theme';
 import { routeForNotification } from '../services/notifications';
 
 SplashScreen.preventAutoHideAsync();
@@ -44,7 +45,7 @@ function RootLayoutNav() {
   if (isLoading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#e26136" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
