@@ -4,6 +4,10 @@ export interface DeliveryPartner {
   vehicleType: 'BIKE' | 'SCOOTER' | 'CAR';
   rating: number;
   status?: 'ONLINE' | 'OFFLINE';
+  email?: string | null;
+  phone_number?: string | null;
+  /** URL of the rider's photo, or null if they have not set one. */
+  profile_picture?: string | null;
 }
 
 // --- Wallet / payout (2026-09-17) ---------------------------------------

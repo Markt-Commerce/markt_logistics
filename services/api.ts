@@ -98,6 +98,26 @@ function normalizeAssignment(raw: any): Assignment {
   };
 }
 
+/** One shape for a partner, wherever it came from.
+ *
+ * getCurrentPartner and updatePartner both return one, and they used to
+ * disagree: the first mapped snake_case to camelCase and dropped email,
+ * phone and photo entirely, the second handed back the raw body. A profile
+ * screen reading `profile_picture` off the first got undefined and showed
+ * no picture however many had been uploaded. */
+function normalizePartner(raw: any): DeliveryPartner {
+  return {
+    id: raw.id,
+    name: raw.name,
+    vehicleType: raw.vehicle_type,
+    rating: raw.rating,
+    status: raw.status === 'ACTIVE' ? 'ONLINE' : 'OFFLINE',
+    email: raw.email ?? null,
+    phone_number: raw.phone_number ?? null,
+    profile_picture: raw.profile_picture ?? null,
+  };
+}
+
 /** Someone else took it, or the hold ran out.
  *
  * Its own type so callers can tell "this order is gone" -- which happens
@@ -177,17 +197,61 @@ class ApiService {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
-      return {
-        id: data.id,
-        name: data.name,
-        vehicleType: data.vehicle_type,
-        rating: data.rating,
-        status: data.status === 'ACTIVE' ? 'ONLINE' : 'OFFLINE',
-      };
+      return normalizePartner(data);
     } catch (error) {
       console.error('getCurrentPartner failed:', error);
       throw error;
     }
+  }
+
+  /** Change the rider's own details. Name, email, vehicle -- not the
+   *  phone number, which is the login credential. */
+  async updatePartner(data: {
+    name?: string;
+    email?: string;
+    vehicleType?: string;
+  }): Promise<DeliveryPartner> {
+    const response = await fetch(`${API_BASE_URL}/partners/me`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+      body: JSON.stringify({
+        ...(data.name !== undefined ? { name: data.name } : {}),
+        ...(data.email !== undefined ? { email: data.email } : {}),
+        ...(data.vehicleType !== undefined
+          ? { vehicle_type: data.vehicleType }
+          : {}),
+      }),
+    });
+    const raw = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(raw?.message || `Could not save (${response.status})`);
+    }
+    return normalizePartner(raw);
+  }
+
+  /** Upload the rider's photo. Multipart, field `file`. */
+  async uploadProfilePhoto(uri: string): Promise<string | null> {
+    const form = new FormData();
+    const name = uri.split('/').pop() || 'photo.jpg';
+    const extension = name.split('.').pop()?.toLowerCase() || 'jpg';
+    form.append('file', {
+      uri,
+      name,
+      type: extension === 'png' ? 'image/png' : 'image/jpeg',
+    } as any);
+
+    const response = await fetch(`${API_BASE_URL}/partners/me/photo`, {
+      method: 'POST',
+      // No Content-Type: fetch sets the multipart boundary itself, and
+      // setting it by hand produces a body the server cannot parse.
+      headers: this.authHeaders(),
+      body: form,
+    });
+    const raw = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(raw?.message || `Could not upload (${response.status})`);
+    }
+    return raw.profile_picture ?? null;
   }
 
   async updatePartnerStatus(status: 'ONLINE' | 'OFFLINE'): Promise<void> {
