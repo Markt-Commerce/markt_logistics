@@ -1,7 +1,7 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import BottomSheet, { BottomSheetScrollView, BottomSheetView } from '@gorhom/bottom-sheet';
 import React, { useMemo, useState } from 'react';
-import { Linking, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { DeliveryStop } from '../types';
 import Button from './Button';
 import SectionHeader from './SectionHeader';
@@ -110,18 +110,27 @@ export default function ActiveDeliverySheet({
           </View>
         )}
         {nextStop ? (
-          <View style={styles.nextRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.nextLabel}>Next</Text>
-              <Text style={styles.nextTitle}>{nextStop.title}</Text>
+          <>
+            <View style={styles.nextRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.nextLabel}>Next</Text>
+                <Text style={styles.nextTitle}>{nextStop.title}</Text>
+              </View>
+              <Button
+                label={nextStop.primaryActionLabel ?? 'Continue'}
+                onPress={() => runStopAction(nextStop)}
+                loading={busyStopId === nextStop.id}
+                style={styles.nextButton}
+              />
             </View>
-            <Button
-              label={nextStop.primaryActionLabel ?? 'Continue'}
-              onPress={() => runStopAction(nextStop)}
-              loading={busyStopId === nextStop.id}
-              style={styles.nextButton}
-            />
-          </View>
+            {/* What the button commits them to, next to the button
+                itself. Every action here was labelled with a state --
+                "Arrived at pickup", "Confirm pickup" -- and a rider on
+                their first delivery had nothing telling them what
+                pressing it does, or what it tells the shop and the
+                buyer. */}
+            {!!nextStop.hint && <Text style={styles.nextHint}>{nextStop.hint}</Text>}
+          </>
         ) : (
           <Text style={styles.nextTitle}>All stops handled</Text>
         )}
@@ -162,6 +171,12 @@ export default function ActiveDeliverySheet({
                 >
                   {done ? (
                     <MaterialIcons name="check" size={14} color="#fff" />
+                  ) : stop.image ? (
+                    // The shop itself. A rider pulling up to a row of
+                    // stalls is matching a picture, not reading a name --
+                    // the marker was a generic storefront glyph for every
+                    // pickup on the route.
+                    <Image source={{ uri: stop.image }} style={styles.markerImage} />
                   ) : (
                     <MaterialIcons
                       name={stop.kind === 'pickup' ? 'storefront' : 'person-pin-circle'}
@@ -201,6 +216,12 @@ export default function ActiveDeliverySheet({
                 </Text>
                 {!!stop.subtitle && <Text style={styles.stopSubtitle}>{stop.subtitle}</Text>}
                 <StatusPill status={stop.status} />
+                {/* Already shown against the button in the summary for
+                    the next stop; here it explains the ones that are not
+                    actionable yet, which otherwise just look broken. */}
+                {!!stop.hint && !isNext && !done && (
+                  <Text style={styles.stopHint}>{stop.hint}</Text>
+                )}
               </View>
             </View>
             {/* The next stop's action is already the big button in the
@@ -289,6 +310,12 @@ const styles = StyleSheet.create({
   nextButton: {
     paddingHorizontal: 20,
   },
+  nextHint: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: 10,
+    lineHeight: 18,
+  },
   listContent: {
     paddingHorizontal: 20,
     paddingTop: 16,
@@ -333,6 +360,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // Fills the marker circle, so a shop with a picture and one without
+  // still line up on the same rail.
+  markerImage: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.border,
   },
   markerDone: {
     backgroundColor: colors.textMuted,
@@ -403,6 +438,12 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
     marginBottom: 6,
+  },
+  stopHint: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginTop: 6,
+    lineHeight: 17,
   },
   dangerButton: { marginTop: 20 },
 });

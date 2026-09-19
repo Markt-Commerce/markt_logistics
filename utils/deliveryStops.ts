@@ -6,46 +6,68 @@ interface AssignmentStopsContext {
 }
 
 /**
- * Single-order assignment -> 2 stops (pickup, dropoff). Dropoff's action
- * only appears once `status` is PICKED_UP or later -- assignments carry
- * no `pod_status` field (unlike run orders), so `status` itself is the
- * only gating signal for this flow. See agile-waddling-pie.md.
+ * Single-order assignment -> 2 stops (pickup, dropoff).
+ *
+ * Driven by `logisticalStatus`, which is the field that moves. This read
+ * `assignment.status` instead -- the assignment's own status, which is
+ * ACCEPTED from the moment a rider takes the job until it is delivered
+ * and never changes in between. So every reload rebuilt the stops from a
+ * value that had not moved, re-offered the step the rider had just
+ * finished, and the second tap came back as a transition error they
+ * could do nothing about. `status` is still read for the one thing it
+ * genuinely says: whether the job has been accepted at all.
+ *
+ * `logisticalStatus` is null until the rider does the first thing, which
+ * is what makes "Arrived at pickup" correct exactly once.
  */
 export function assignmentToStops(assignment: Assignment, ctx: AssignmentStopsContext): DeliveryStop[] {
-  const status = assignment.status;
+  const step = assignment.logisticalStatus ?? null;
 
-  const pickupStatus = status === 'ARRIVED_PICKUP' ? 'ARRIVED_PICKUP' : status === 'ASSIGNED' || status === 'ACCEPTED' ? 'PENDING' : 'PICKED_UP';
+  const pickupStatus =
+    step === null ? 'PENDING' : step === 'ARRIVED_PICKUP' ? 'ARRIVED_PICKUP' : 'PICKED_UP';
 
   let pickupActionLabel: string | undefined;
   let pickupAction: (() => Promise<void>) | undefined;
-  if (status === 'ASSIGNED' || status === 'ACCEPTED') {
+  let pickupHint: string | undefined;
+  if (step === null) {
     pickupActionLabel = 'Arrived at pickup';
     pickupAction = () => ctx.onStatusUpdate('ARRIVED_PICKUP');
-  } else if (status === 'ARRIVED_PICKUP') {
+    // What the tap means, not what the state is called. A rider who has
+    // not done this before was given a button labelled with a status and
+    // left to work out whether it was safe to press yet.
+    pickupHint = 'Head to the shop. Tap this when you get there, and the shop is told you have arrived.';
+  } else if (step === 'ARRIVED_PICKUP') {
     pickupActionLabel = 'Confirm pickup';
     pickupAction = () => ctx.onStatusUpdate('PICKED_UP');
+    pickupHint = 'Check the parcel against the order before you confirm. Once you do, it is on you.';
   }
 
   const dropoffStatus =
-    status === 'EN_ROUTE_TO_DROPOFF'
+    step === 'EN_ROUTE_TO_DROPOFF'
       ? 'EN_ROUTE_TO_DROPOFF'
-      : status === 'DELIVERED_PENDING_QR'
+      : step === 'DELIVERED_PENDING_QR'
       ? 'DELIVERED_PENDING_QR'
-      : status === 'COMPLETED'
+      : step === 'COMPLETED'
       ? 'COMPLETED'
       : 'PENDING';
 
   let dropoffActionLabel: string | undefined;
   let dropoffAction: (() => Promise<void>) | undefined;
-  if (status === 'PICKED_UP') {
+  let dropoffHint: string | undefined;
+  if (step === 'PICKED_UP') {
     dropoffActionLabel = 'Head to buyer';
     dropoffAction = () => ctx.onStatusUpdate('EN_ROUTE_TO_DROPOFF');
-  } else if (status === 'EN_ROUTE_TO_DROPOFF') {
+    dropoffHint = 'You have the parcel. Tap this when you set off and the buyer can follow you in.';
+  } else if (step === 'EN_ROUTE_TO_DROPOFF') {
     dropoffActionLabel = "I've arrived";
     dropoffAction = () => ctx.onStatusUpdate('DELIVERED_PENDING_QR');
-  } else if (status === 'DELIVERED_PENDING_QR') {
+    dropoffHint = 'Tap this at the door. The buyer gets their delivery code the moment you do.';
+  } else if (step === 'DELIVERED_PENDING_QR') {
     dropoffActionLabel = 'Confirm delivery code';
     dropoffAction = async () => ctx.onGoToPodConfirm();
+    dropoffHint = 'Ask the buyer for their code, or scan it. This is what releases your pay.';
+  } else if (step === 'COMPLETED') {
+    dropoffHint = 'Delivered and confirmed. Your earnings are on the way to your wallet.';
   }
 
   const orderTag = `Order #${assignment.orderId.slice(0, 8)}`;
@@ -65,8 +87,10 @@ export function assignmentToStops(assignment: Assignment, ctx: AssignmentStopsCo
       coords: assignment.pickup,
       status: pickupStatus,
       phone: assignment.sellerPhone,
+      image: assignment.sellerImage,
       primaryActionLabel: pickupActionLabel,
       onPrimaryAction: pickupAction,
+      hint: pickupHint,
     },
     {
       id: 'dropoff',
@@ -78,6 +102,7 @@ export function assignmentToStops(assignment: Assignment, ctx: AssignmentStopsCo
       phone: assignment.buyerPhone,
       primaryActionLabel: dropoffActionLabel,
       onPrimaryAction: dropoffAction,
+      hint: dropoffHint,
     },
   ];
 }
@@ -105,12 +130,15 @@ export function runToStops(run: RunDetail, ctx: RunStopsContext): DeliveryStop[]
   const pickupStops: DeliveryStop[] = run.stops.map((stop) => {
     let primaryActionLabel: string | undefined;
     let onPrimaryAction: (() => Promise<void>) | undefined;
+    let hint: string | undefined;
     if (stop.status === 'pending') {
       primaryActionLabel = "I've arrived";
       onPrimaryAction = () => ctx.onArrive(stop.seller_id);
+      hint = 'Tap this at the shop. Stops can be done in any order -- take whichever is nearest.';
     } else if (stop.status === 'arrived') {
       primaryActionLabel = 'Confirm pickup';
       onPrimaryAction = () => ctx.onConfirmPickup(stop.seller_id);
+      hint = 'Check the parcels against the order before you confirm.';
     }
 
     return {
@@ -122,6 +150,7 @@ export function runToStops(run: RunDetail, ctx: RunStopsContext): DeliveryStop[]
       status: stop.status,
       primaryActionLabel,
       onPrimaryAction,
+      hint,
     };
   });
 
@@ -130,11 +159,18 @@ export function runToStops(run: RunDetail, ctx: RunStopsContext): DeliveryStop[]
     let onPrimaryAction: (() => Promise<void>) | undefined;
     let secondaryActionLabel: string | undefined;
     let onSecondaryAction: (() => void) | undefined;
+    let hint: string | undefined;
     if (order.pod_status === 'qr_issued') {
       primaryActionLabel = 'Confirm delivery';
       onPrimaryAction = async () => ctx.onGoToPodConfirm(order.order_id);
       secondaryActionLabel = 'Report issue';
       onSecondaryAction = () => ctx.onGoToReportFailure(order.order_id);
+      hint = 'Ask the buyer for their code, or scan it. This is what releases your pay for this drop.';
+    } else {
+      // The backend only issues codes once every pickup on the run is
+      // done, so a rider looking at a locked dropoff needs to be told
+      // what is holding it rather than left to guess it is broken.
+      hint = 'Collect from every shop on the run first -- delivery codes are issued once you have.';
     }
 
     const addressLine = order.delivery_address
@@ -156,6 +192,7 @@ export function runToStops(run: RunDetail, ctx: RunStopsContext): DeliveryStop[]
       onPrimaryAction,
       secondaryActionLabel,
       onSecondaryAction,
+      hint,
     };
   });
 

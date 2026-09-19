@@ -81,10 +81,17 @@ function firstLocation(pickup: unknown): { lat: number; lng: number } {
 function normalizeOrder(raw: any): Order {
   return {
     orderId: raw.order_id,
+    orderNumber: raw.order_number ?? null,
     pickup: firstLocation(raw.pickup),
     dropoff: raw.dropoff,
     distanceMeters: raw.distance_meters,
     estimatedEarnings: raw.estimated_earnings,
+    sellerName: raw.seller_name ?? null,
+    sellerImage: raw.seller_image ?? null,
+    pickupAddress: raw.pickup_address ?? null,
+    pickupCount: raw.pickup_count ?? 1,
+    itemCount: raw.item_count ?? 0,
+    dropoffArea: raw.dropoff_area ?? null,
   };
 }
 
@@ -96,7 +103,11 @@ function normalizeAssignment(raw: any): Assignment {
     pickup: firstLocation(raw.pickup),
     dropoff: raw.dropoff,
     status: raw.status,
+    // The field the screen actually steps through. Absent on a delivery
+    // nobody has started, which is a real state and not a missing one.
+    logisticalStatus: raw.logistical_status ?? null,
     sellerName: raw.seller_name ?? null,
+    sellerImage: raw.seller_image ?? null,
     pickupAddress: raw.pickup_address ?? null,
     sellerPhone: raw.seller_phone ?? null,
     buyerName: raw.buyer_name ?? null,

@@ -81,21 +81,42 @@ export interface Location {
 
 export interface Order {
   orderId: string;
+  orderNumber?: string | null;
   pickup: { lat: number; lng: number };
   dropoff: { lat: number; lng: number };
   distanceMeters: number;
   estimatedEarnings: number;
+  /** What the job actually is. An offer used to be an id, a distance and
+   *  a number of naira, so the accept card could only say "Order
+   *  #a1b2c3d4" -- a rider had no way to tell a shop they know from one
+   *  down an alley they don't, and had seconds to decide. */
+  sellerName?: string | null;
+  sellerImage?: string | null;
+  pickupAddress?: string | null;
+  /** A second shop is a second stop, which is the difference between a
+   *  ten-minute job and a half-hour one. */
+  pickupCount?: number;
+  itemCount?: number;
+  /** The area only -- the buyer's full address is not the rider's until
+   *  they have accepted. */
+  dropoffArea?: string | null;
 }
 
-// Backend status is a single field shared by two schemas that each only
-// declare part of its range: ActiveAssignmentSchema (GET) documents
-// "ASSIGNED"/"ACCEPTED"/"REJECTED" (pre-pickup states), while
-// LogisticStatusUpdateSchema (PATCH .../status) accepts "ARRIVED_PICKUP" /
-// "PICKED_UP" / "EN_ROUTE_TO_DROPOFF" / "DELIVERED_PENDING_QR" / "COMPLETED"
-// (the progress states set by the rider). Marshmallow doesn't enforce
-// `validate` on dump, so a GET after a PATCH does return the real
-// progress value -- kept as `string` here rather than a union since the
-// backend itself doesn't model this as one clean enum.
+// An assignment has two statuses, and this used to be written down here
+// as one. The note that replaced this one said a GET after a PATCH
+// "does return the real progress value" because marshmallow doesn't
+// enforce `validate` on dump -- true about marshmallow, and wrong about
+// the data: they are different columns.
+//
+//   status             the assignment's own -- ASSIGNED, then ACCEPTED for
+//                      the whole job, and it never moves again
+//   logisticalStatus   the one that moves -- ARRIVED_PICKUP, PICKED_UP,
+//                      EN_ROUTE_TO_DROPOFF, DELIVERED_PENDING_QR, COMPLETED,
+//                      and null until the rider does the first thing
+//
+// Driving the screen off `status` meant every reload re-offered the step
+// the rider had just finished, and the second tap was rejected by the
+// backend's transition check as an error they could do nothing about.
 export interface Assignment {
   assignmentId: string;
   orderId: string;
@@ -103,10 +124,15 @@ export interface Assignment {
   pickup: { lat: number; lng: number };
   dropoff: { lat: number; lng: number };
   status: string;
+  /** Which step they are on. Null on a freshly accepted delivery, which
+   *  is what makes "Arrived at pickup" the right first action exactly
+   *  once. */
+  logisticalStatus?: string | null;
   /** Who is at each end, and how to reach them. A run's stops have carried
    *  these since runs existed; a single order carried two coordinates, so
    *  the app could only print "Pickup from seller". */
   sellerName?: string | null;
+  sellerImage?: string | null;
   pickupAddress?: string | null;
   sellerPhone?: string | null;
   buyerName?: string | null;
@@ -237,6 +263,14 @@ export interface DeliveryStop {
   /** Someone to call when the shop is shut or nobody answers the gate.
    *  Absent when the backend has no number for this end. */
   phone?: string | null;
+  /** The shop's picture, so a rider is looking for a storefront rather
+   *  than reading a name off a list. Pickup stops only. */
+  image?: string | null;
+  /** What to do here, in one line, on the one stop that is actionable.
+   *  A rider new to the app was shown a button labelled with a state
+   *  ("Arrived at pickup") and nothing about what it commits them to or
+   *  what happens next. */
+  hint?: string;
 }
 
 /** A hold on an order while the rider decides. */
