@@ -85,6 +85,8 @@ export default function EarningsScreen() {
 
   // No synchronous setState before the first await -- `loading` already
   // initializes to true, same pattern as the rest of this app's screens.
+  const canWithdraw = (balance ?? 0) > 0;
+
   const load = useCallback(async () => {
     try {
       const [walletBalance, txResult, wdResult] = await Promise.all([
@@ -214,29 +216,49 @@ export default function EarningsScreen() {
           <View style={{ width: 36 }} />
         </View>
 
-        <Text style={styles.heroLabel}>Available to withdraw</Text>
-        {loading ? (
-          <ActivityIndicator color="#fff" style={{ marginVertical: 10 }} />
-        ) : (
-          <Text style={styles.heroValue}>
-            ₦{(balance ?? 0).toLocaleString()}
-          </Text>
-        )}
+        {/* Centred, and the balance is the thing -- same shape as the
+            shopper wallet, so the two apps read as one product. The
+            withdraw action was a full-width grey slab when there was
+            nothing to withdraw, which is most of the time for a new rider
+            and made the whole screen look broken. */}
+        <View style={styles.heroBody}>
+          <Text style={styles.heroLabel}>Available to withdraw</Text>
+          {loading ? (
+            <ActivityIndicator color="#fff" style={{ marginVertical: 12 }} />
+          ) : (
+            <Text style={styles.heroValue} numberOfLines={1} adjustsFontSizeToFit>
+              ₦{(balance ?? 0).toLocaleString()}
+            </Text>
+          )}
 
-        <Button
-          label="Withdraw to bank"
-          onPress={openWithdraw}
-          disabled={!balance}
-          variant="secondary"
-          style={styles.heroButton}
-          icon={
+          <TouchableOpacity
+            style={[styles.heroAction, !canWithdraw && styles.heroActionOff]}
+            onPress={openWithdraw}
+            disabled={!canWithdraw}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !canWithdraw }}
+          >
             <MaterialIcons
               name="account-balance"
-              size={18}
-              color={colors.textPrimary}
+              size={17}
+              color={canWithdraw ? colors.primary : 'rgba(255,255,255,0.75)'}
             />
-          }
-        />
+            <Text
+              style={[
+                styles.heroActionText,
+                !canWithdraw && styles.heroActionTextOff,
+              ]}
+            >
+              Withdraw to bank
+            </Text>
+          </TouchableOpacity>
+
+          {!canWithdraw && !loading && (
+            <Text style={styles.heroHint}>
+              Money lands here as soon as a delivery is confirmed.
+            </Text>
+          )}
+        </View>
       </View>
 
       <ScrollView
@@ -413,25 +435,50 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   heroTitle: { ...typography.subtitle, color: '#fff' },
+  heroBody: { alignItems: 'center', paddingTop: spacing.sm },
   heroLabel: {
     ...typography.caption,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: spacing.md,
+    color: 'rgba(255,255,255,0.85)',
   },
   heroValue: {
     ...typography.title,
-    fontSize: 38,
+    fontSize: 40,
     color: '#fff',
-    marginTop: 4,
+    marginTop: 2,
   },
-  heroButton: { alignSelf: 'stretch', marginTop: spacing.md },
+  // A pill, not a full-width slab: it is one action, and when there is
+  // nothing to withdraw it should read as unavailable rather than as a
+  // grey block filling the screen.
+  heroAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    alignSelf: 'center',
+    marginTop: spacing.md,
+    paddingHorizontal: 22,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#fff',
+  },
+  heroActionOff: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  heroActionText: { ...typography.bodyBold, fontSize: 15, color: colors.primary },
+  heroActionTextOff: { color: 'rgba(255,255,255,0.75)' },
+  heroHint: {
+    ...typography.caption,
+    color: 'rgba(255,255,255,0.75)',
+    marginTop: spacing.sm,
+    textAlign: 'center',
+  },
 
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: spacing.section,
+    paddingTop: spacing.md,
     paddingBottom: 40,
   },
-  section: { marginBottom: 32 },
+  section: { marginBottom: spacing.section },
 
   txIcon: {
     width: 34,

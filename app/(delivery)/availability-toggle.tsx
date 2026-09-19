@@ -13,6 +13,7 @@ import SectionHeader from '../../components/SectionHeader';
 import StatusPill from '../../components/StatusPill';
 import { colors, radius, shadow, typography } from '../../components/theme';
 import { useAuth } from '../../contexts/auth';
+import { useReportLocation } from '../../hooks/useReportLocation';
 import apiService, { OrderTakenError } from '../../services/api';
 import {
   Assignment,
@@ -66,6 +67,10 @@ export default function DashboardMapScreen() {
   const { signOut } = useAuth();
   const [partner, setPartner] = useState<any>(null);
   const [isOnline, setIsOnline] = useState(false);
+
+  // Nothing was telling the server where this rider is, so the backend's
+  // radius search had nothing to search from. See hooks/useReportLocation.
+  useReportLocation(isOnline);
   const [isUpdating, setIsUpdating] = useState(false);
 
   const [orders, setOrders] = useState<Order[]>([]);
@@ -78,6 +83,7 @@ export default function DashboardMapScreen() {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [offer, setOffer] = useState<OrderOffer | null>(null);
   const [offerError, setOfferError] = useState<string | null>(null);
+  const [loadProblem, setLoadProblem] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const sheetRef = useRef<BottomSheet>(null);
@@ -153,7 +159,16 @@ export default function DashboardMapScreen() {
       if (isOnline) {
         const [availableOrders, runs] = await Promise.all([
           apiService.getAvailableOrders().catch((error) => {
+            // "No orders nearby" and "we do not know where you are" look
+            // identical once the error is swallowed, and the second one is
+            // the rider's to fix. Say which it is.
             console.error('Error loading available orders:', error);
+            setLoadProblem(
+              String(error?.message || '').toLowerCase().includes('location')
+                ? 'We cannot see your location yet. Turn location on for ' +
+                    'Markt, then pull to refresh.'
+                : null
+            );
             return [] as Order[];
           }),
           apiService.getAvailableRuns().catch((error) => {
@@ -163,6 +178,7 @@ export default function DashboardMapScreen() {
         ]);
         setOrders(availableOrders);
         setAvailableRuns(runs);
+        if (availableOrders.length) setLoadProblem(null);
       } else {
         setOrders([]);
         setAvailableRuns([]);
@@ -541,7 +557,12 @@ export default function DashboardMapScreen() {
               <>
                 <View style={styles.section}>
                   <SectionHeader title={`Available orders (${orders.length})`} />
-                  {orders.length === 0 && !loading && <SectionEmpty icon="explore" title="No orders nearby right now." />}
+                  {orders.length === 0 && !loading && (
+                    <SectionEmpty
+                      icon={loadProblem ? 'location-off' : 'explore'}
+                      title={loadProblem ?? 'No orders nearby right now.'}
+                    />
+                  )}
                   {orders.map((order) => (
                     <TouchableOpacity
                       key={order.orderId}
