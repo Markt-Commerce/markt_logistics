@@ -7,9 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../../components/Button';
 import SectionEmpty from '../../components/SectionEmpty';
 import EarningsSummary from '../../components/EarningsSummary';
-import SectionHeader from '../../components/SectionHeader';
 import StatusPill from '../../components/StatusPill';
-import { colors, radius, spacing, tones, typography } from '../../components/theme';
+import { colors, radius, shadow, spacing, tones, typography } from '../../components/theme';
 import apiService from '../../services/api';
 import { Bank, WalletTransaction, Withdrawal } from '../../types';
 
@@ -86,6 +85,7 @@ export default function EarningsScreen() {
   // No synchronous setState before the first await -- `loading` already
   // initializes to true, same pattern as the rest of this app's screens.
   const canWithdraw = (balance ?? 0) > 0;
+  const [walletTab, setWalletTab] = useState<'activity' | 'withdrawals'>('activity');
 
   const load = useCallback(async () => {
     try {
@@ -262,17 +262,50 @@ export default function EarningsScreen() {
       </View>
 
       <ScrollView
-        style={{ flex: 1 }}
+        style={styles.body}
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}
       >
         <EarningsSummary transactions={transactions} />
 
-        <View style={styles.section}>
-          <SectionHeader title="Withdrawal requests" />
-          {withdrawals.length === 0 && !loading && (
-            <SectionEmpty icon="account-balance" title="No withdrawals yet." />
-          )}
+        {/* Two tabs, not two stacked lists. Withdrawals and activity are
+            alternative views of the same money, and stacked they meant
+            scrolling past one empty section to reach another. */}
+        <View style={styles.segment}>
+          {(['activity', 'withdrawals'] as const).map((key) => {
+            const active = walletTab === key;
+            const count = key === 'activity' ? transactions.length : withdrawals.length;
+            return (
+              <TouchableOpacity
+                key={key}
+                style={[styles.segmentTab, active && styles.segmentTabOn]}
+                onPress={() => setWalletTab(key)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+              >
+                <Text style={[styles.segmentText, active && styles.segmentTextOn]}>
+                  {key === 'activity' ? 'Activity' : 'Withdrawals'}
+                </Text>
+                <View style={[styles.segmentCount, active && styles.segmentCountOn]}>
+                  <Text
+                    style={[
+                      styles.segmentCountText,
+                      active && styles.segmentCountTextOn,
+                    ]}
+                  >
+                    {count}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {walletTab === 'withdrawals' ? (
+          <View style={styles.section}>
+            {withdrawals.length === 0 && !loading && (
+              <SectionEmpty icon="account-balance" title="No withdrawals yet." />
+            )}
           {withdrawals.map((w) => (
             <View key={w.id} style={styles.row}>
               <View style={{ flex: 1 }}>
@@ -285,13 +318,15 @@ export default function EarningsScreen() {
               <StatusPill status={w.status} />
             </View>
           ))}
-        </View>
-
-        <View style={styles.section}>
-          <SectionHeader title="Wallet activity" />
-          {transactions.length === 0 && !loading && (
-            <SectionEmpty icon="receipt-long" title="Earnings from completed deliveries will show up here." />
-          )}
+          </View>
+        ) : (
+          <View style={styles.section}>
+            {transactions.length === 0 && !loading && (
+              <SectionEmpty
+                icon="receipt-long"
+                title="Earnings from completed deliveries will show up here."
+              />
+            )}
           {transactions.map((t) => {
             const credit = t.type === 'credit';
             return (
@@ -325,7 +360,8 @@ export default function EarningsScreen() {
               </View>
             );
           })}
-        </View>
+          </View>
+        )}
       </ScrollView>
 
       <BottomSheet
@@ -413,7 +449,11 @@ export default function EarningsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  // The safe-area inset is painted in the container's own colour. White
+  // put a white band above the orange hero, which the shopper wallet does
+  // not have -- there the colour runs under the status bar.
+  container: { flex: 1, backgroundColor: colors.primary },
+  body: { flex: 1, backgroundColor: colors.background },
 
   hero: {
     backgroundColor: colors.primary,
@@ -479,6 +519,39 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   section: { marginBottom: spacing.section },
+
+  segment: {
+    flexDirection: 'row',
+    gap: 6,
+    backgroundColor: colors.surface,
+    borderRadius: radius,
+    padding: 4,
+    marginBottom: spacing.md,
+  },
+  segmentTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 38,
+    borderRadius: 6,
+  },
+  segmentTabOn: { backgroundColor: colors.background, ...shadow },
+  segmentText: { ...typography.caption, fontWeight: '600', color: colors.textSecondary },
+  segmentTextOn: { color: colors.textPrimary, fontWeight: '700' },
+  segmentCount: {
+    minWidth: 20,
+    paddingHorizontal: 5,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceDim,
+  },
+  segmentCountOn: { backgroundColor: colors.primary },
+  segmentCountText: { fontSize: 11, fontWeight: '700', color: colors.textSecondary },
+  segmentCountTextOn: { color: '#fff' },
 
   txIcon: {
     width: 34,

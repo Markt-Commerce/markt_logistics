@@ -144,11 +144,13 @@ export default function EarningsSummary({
 }
 
 const styles = StyleSheet.create({
+  // No outline. A border earns its place on something you can press --
+  // an input, a chip, a button. Around content it is just a rectangle,
+  // and stacking rectangles is what made these screens look like a form.
+  // Definition comes from the surface and the spacing instead.
   card: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
     borderRadius: radius,
-    borderWidth: 1,
-    borderColor: colors.border,
     padding: spacing.card,
     marginBottom: spacing.section,
   },

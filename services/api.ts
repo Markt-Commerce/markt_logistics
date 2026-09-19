@@ -92,9 +92,16 @@ function normalizeAssignment(raw: any): Assignment {
   return {
     assignmentId: raw.assignment_id,
     orderId: raw.order_id,
+    orderNumber: raw.order_number ?? null,
     pickup: firstLocation(raw.pickup),
     dropoff: raw.dropoff,
     status: raw.status,
+    sellerName: raw.seller_name ?? null,
+    pickupAddress: raw.pickup_address ?? null,
+    sellerPhone: raw.seller_phone ?? null,
+    buyerName: raw.buyer_name ?? null,
+    dropoffAddress: raw.dropoff_address ?? null,
+    buyerPhone: raw.buyer_phone ?? null,
   };
 }
 

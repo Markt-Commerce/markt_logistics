@@ -733,9 +733,11 @@ const styles = StyleSheet.create({
   segmentCountText: { fontSize: 11, fontWeight: '700', color: colors.textSecondary },
   segmentCountTextOn: { color: '#fff' },
 
+  // Same reasoning as EarningsSummary's card: an outline around every
+  // job turned a list of work into a stack of rectangles. The surface and
+  // the gap between them are enough to read as separate cards.
   jobCard: {
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: colors.surface,
     borderRadius: radius,
     padding: 14,
     marginBottom: 10,
