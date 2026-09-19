@@ -4,17 +4,22 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { DeliveryStop } from '../types';
+import { colors, tones } from './theme';
 
 const LAST_POSITION_KEY = 'lastKnownPosition';
 // Only used before we've ever known a real position on this device (fresh
 // install, permission not yet granted) -- not a meaningful default location.
 const FALLBACK_REGION: Region = { latitude: 6.5244, longitude: 3.3792, latitudeDelta: 0.05, longitudeDelta: 0.05 };
-const PICKUP_PIN_COLOR = '#E94C2A';
+// Off the shared tokens, so a change to the brand does not leave the map
+// pointing at the old orange. Dropoff blue is the one value with no token
+// behind it: nothing else in the app needs a second accent, and a pickup
+// and a dropoff pin have to be told apart at a glance on a map.
+const PICKUP_PIN_COLOR = colors.primary;
 const DROPOFF_PIN_COLOR = '#2196F3';
 // Browse-only pins (dashboard, not-yet-accepted) get their own colors so
 // they read as distinct from the in-progress pickup/dropoff pins above.
-const AVAILABLE_ORDER_PIN_COLOR = '#178b1f';
-const AVAILABLE_RUN_PIN_COLOR = '#A15C00';
+const AVAILABLE_ORDER_PIN_COLOR = colors.success;
+const AVAILABLE_RUN_PIN_COLOR = tones.attention.text;
 const PIN_COLORS: Record<DeliveryStop['kind'], string> = {
   pickup: PICKUP_PIN_COLOR,
   dropoff: DROPOFF_PIN_COLOR,

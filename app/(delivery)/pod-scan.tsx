@@ -12,11 +12,10 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors } from '../../components/theme';
+import Button from '../../components/Button';
+import { colors, radius, typography } from '../../components/theme';
 import apiService from '../../services/api';
 
-const PRIMARY_COLOR = colors.primary;
-const BG_LIGHT = colors.background;
 
 /**
  * 10.6 POD handshake, rider side: scan the code the buyer's app displays
@@ -91,7 +90,7 @@ export default function PodScanScreen() {
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => setManualMode(false)} style={styles.backButton}>
-            <MaterialIcons name="arrow-back" size={22} color="#1a1a1a" />
+            <MaterialIcons name="arrow-back" size={22} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Enter code</Text>
           <View style={{ width: 40 }} />
@@ -106,17 +105,12 @@ export default function PodScanScreen() {
             autoCapitalize="none"
             autoCorrect={false}
           />
-          <TouchableOpacity
-            style={[styles.confirmButton, (!manualCode || submitting) && styles.confirmButtonDisabled]}
-            disabled={!manualCode || submitting}
+          <Button
+            label="Confirm delivery"
             onPress={() => confirm(manualCode)}
-          >
-            {submitting ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={styles.confirmButtonText}>Confirm delivery</Text>
-            )}
-          </TouchableOpacity>
+            loading={submitting}
+            disabled={!manualCode.trim()}
+          />
         </View>
       </SafeAreaView>
     );
@@ -125,7 +119,7 @@ export default function PodScanScreen() {
   if (!permission) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator color={PRIMARY_COLOR} style={{ flex: 1 }} />
+        <ActivityIndicator color={colors.primary} style={{ flex: 1 }} />
       </SafeAreaView>
     );
   }
@@ -134,14 +128,16 @@ export default function PodScanScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.permissionContainer}>
-          <MaterialIcons name="qr-code-scanner" size={48} color={PRIMARY_COLOR} />
+          <MaterialIcons name="qr-code-scanner" size={48} color={colors.primary} />
           <Text style={styles.permissionTitle}>Camera access needed</Text>
           <Text style={styles.permissionText}>
             To scan a buyer&apos;s delivery code, Markt Logistics needs camera access.
           </Text>
-          <TouchableOpacity style={styles.confirmButton} onPress={requestPermission}>
-            <Text style={styles.confirmButtonText}>Grant access</Text>
-          </TouchableOpacity>
+          <Button
+            label="Grant access"
+            onPress={requestPermission}
+            style={styles.permissionButton}
+          />
           <TouchableOpacity style={styles.manualLink} onPress={() => setManualMode(true)}>
             <Text style={styles.manualLinkText}>Enter code manually instead</Text>
           </TouchableOpacity>
@@ -191,14 +187,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: BG_LIGHT,
+    backgroundColor: colors.background,
   },
-  headerTitle: { fontSize: 16, fontWeight: '700', color: '#1a1a1a' },
+  headerTitle: { ...typography.subtitle, color: colors.textPrimary },
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -225,7 +221,7 @@ const styles = StyleSheet.create({
     height: 240,
     borderRadius: 16,
     borderWidth: 3,
-    borderColor: PRIMARY_COLOR,
+    borderColor: colors.primary,
   },
   overlayLoading: {
     ...StyleSheet.absoluteFill,
@@ -235,29 +231,29 @@ const styles = StyleSheet.create({
   },
   manualLinkOverlay: { alignSelf: 'center', marginBottom: 24, padding: 12 },
   manualLinkOverlayText: { color: '#fff', fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
-  manualContainer: { flex: 1, padding: 20, backgroundColor: BG_LIGHT },
-  manualLabel: { fontSize: 14, color: '#666', marginBottom: 16 },
+  manualContainer: { flex: 1, padding: 20, backgroundColor: colors.background },
+  manualLabel: { ...typography.secondary, color: colors.textSecondary, marginBottom: 16 },
   manualInput: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: colors.border,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
+    color: colors.textPrimary,
     marginBottom: 20,
   },
-  confirmButton: {
-    backgroundColor: PRIMARY_COLOR,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  confirmButtonDisabled: { opacity: 0.5 },
-  confirmButtonText: { color: '#fff', fontSize: 14, fontWeight: '700', letterSpacing: 0.5 },
+  permissionButton: { alignSelf: 'stretch' },
   manualLink: { marginTop: 16, alignItems: 'center' },
-  manualLinkText: { color: PRIMARY_COLOR, fontSize: 13, fontWeight: '700' },
-  permissionContainer: { flex: 1, padding: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: BG_LIGHT },
-  permissionTitle: { fontSize: 18, fontWeight: '800', color: '#1a1a1a', marginTop: 16, marginBottom: 8 },
-  permissionText: { fontSize: 13, color: '#666', textAlign: 'center', marginBottom: 24 },
+  manualLinkText: { ...typography.caption, fontWeight: '700', color: colors.primary },
+  permissionContainer: { flex: 1, padding: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
+  permissionTitle: { ...typography.title, color: colors.textPrimary, marginTop: 16, marginBottom: 8 },
+  permissionText: {
+    ...typography.secondary,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
 });

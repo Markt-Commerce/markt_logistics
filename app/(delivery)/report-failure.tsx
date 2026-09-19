@@ -1,15 +1,23 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Button from '../../components/Button';
 import SectionHeader from '../../components/SectionHeader';
-import { colors } from '../../components/theme';
+import { colors, radius, spacing, typography } from '../../components/theme';
 import apiService from '../../services/api';
 import { DeliveryFailureReason } from '../../types';
-
-const PRIMARY_COLOR = colors.primary;
-const BG_LIGHT = colors.background;
 
 const REASONS: { value: DeliveryFailureReason; label: string; description: string }[] = [
   {
@@ -62,30 +70,49 @@ export default function ReportFailureScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <MaterialIcons name="arrow-back" size={22} color="#1a1a1a" />
-        </TouchableOpacity>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backButton}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          hitSlop={8}
+        >
+          <MaterialIcons name="arrow-back" size={22} color={colors.textPrimary} />
+        </Pressable>
         <Text style={styles.headerTitle}>Report failed delivery</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
         <SectionHeader title="What happened?" />
-        {REASONS.map((r) => (
-          <TouchableOpacity
-            key={r.value}
-            style={[styles.reasonCard, selected === r.value && styles.reasonCardSelected]}
-            onPress={() => setSelected(r.value)}
-          >
-            <View style={styles.radioOuter}>
-              {selected === r.value && <View style={styles.radioInner} />}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.reasonLabel}>{r.label}</Text>
-              <Text style={styles.reasonDescription}>{r.description}</Text>
-            </View>
-          </TouchableOpacity>
-        ))}
+        {REASONS.map((r) => {
+          const chosen = selected === r.value;
+          return (
+            <Pressable
+              key={r.value}
+              style={[styles.reasonCard, chosen && styles.reasonCardSelected]}
+              onPress={() => setSelected(r.value)}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: chosen }}
+              accessibilityLabel={`${r.label}. ${r.description}`}
+            >
+              <View style={[styles.radioOuter, chosen && styles.radioOuterSelected]}>
+                {chosen && <View style={styles.radioInner} />}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.reasonLabel}>{r.label}</Text>
+                <Text style={styles.reasonDescription}>{r.description}</Text>
+              </View>
+            </Pressable>
+          );
+        })}
 
         <SectionHeader title="Additional notes (optional)" style={{ marginTop: 20 }} />
         <TextInput
@@ -93,41 +120,38 @@ export default function ReportFailureScreen() {
           value={notes}
           onChangeText={setNotes}
           placeholder="Anything else worth noting..."
+          placeholderTextColor={colors.textMuted}
           multiline
-          numberOfLines={4}
         />
 
-        <TouchableOpacity
-          style={[styles.submitButton, (!selected || submitting) && styles.submitButtonDisabled]}
-          disabled={!selected || submitting}
+        <Button
+          label="Submit report"
           onPress={handleSubmit}
-        >
-          {submitting ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Text style={styles.submitButtonText}>Submit report</Text>
-          )}
-        </TouchableOpacity>
+          loading={submitting}
+          disabled={!selected}
+          style={styles.submit}
+        />
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: BG_LIGHT },
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: spacing.screenX,
+    paddingVertical: spacing.sm,
   },
-  headerTitle: { fontSize: 16, fontWeight: '700', color: '#1a1a1a' },
+  headerTitle: { ...typography.subtitle, color: colors.textPrimary },
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -135,45 +159,54 @@ const styles = StyleSheet.create({
   reasonCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 12,
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    gap: spacing.sm,
+    backgroundColor: colors.background,
+    borderRadius: radius,
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: colors.border,
     padding: 14,
     marginBottom: 10,
   },
-  reasonCardSelected: { borderColor: PRIMARY_COLOR, backgroundColor: PRIMARY_COLOR + '08' },
+  reasonCardSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryMuted,
+  },
   radioOuter: {
     width: 20,
     height: 20,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: PRIMARY_COLOR,
+    // Unselected radios were already brand-orange, so every option looked
+    // half-chosen and the actual choice was hard to pick out.
+    borderColor: colors.surfaceDim,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 2,
   },
-  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: PRIMARY_COLOR },
-  reasonLabel: { fontSize: 14, fontWeight: '700', color: '#1a1a1a' },
-  reasonDescription: { fontSize: 12, color: '#666', marginTop: 2 },
+  radioOuterSelected: { borderColor: colors.primary },
+  radioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.primary,
+  },
+  reasonLabel: { ...typography.bodyBold, fontSize: 14, color: colors.textPrimary },
+  reasonDescription: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: 2,
+    lineHeight: 17,
+  },
   notesInput: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: colors.border,
     padding: 14,
-    fontSize: 14,
+    ...typography.secondary,
+    color: colors.textPrimary,
     minHeight: 90,
     textAlignVertical: 'top',
   },
-  submitButton: {
-    backgroundColor: PRIMARY_COLOR,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  submitButtonDisabled: { opacity: 0.5 },
-  submitButtonText: { color: '#fff', fontSize: 14, fontWeight: '700', letterSpacing: 0.5 },
+  submit: { marginTop: spacing.md },
 });
