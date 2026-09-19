@@ -1,7 +1,7 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, spacing, typography } from './theme';
+import { colors, radius, spacing, typography } from './theme';
 
 interface SectionEmptyProps {
   icon: keyof typeof MaterialIcons.glyphMap;
@@ -29,8 +29,15 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.lg,
-    gap: 10,
+    // Was spacing.lg (48) top and bottom, so two empty sections stacked
+    // put nearly 200px of nothing between two headings and the screen read
+    // as unfinished rather than as empty.
+    paddingVertical: spacing.md,
+    gap: 8,
+    // A quiet ground, so an empty section reads as a placeholder with a
+    // shape rather than as a gap where something failed to load.
+    backgroundColor: colors.surface,
+    borderRadius: radius,
   },
   title: {
     ...typography.secondary,
