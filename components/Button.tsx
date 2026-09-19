@@ -2,7 +2,10 @@ import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View, ViewStyle } from 'react-native';
 import { colors, radius, typography } from './theme';
 
-type Variant = 'primary' | 'secondary' | 'outline';
+// 'danger' is an outline that reads as destructive -- reporting a failed
+// run, abandoning a delivery. Same shape as the others so it never looks
+// like a different control, only a differently-weighted one.
+type Variant = 'primary' | 'secondary' | 'outline' | 'danger';
 
 interface ButtonProps {
   label: string;
@@ -32,6 +35,7 @@ export default function Button({
     variant === 'primary' && styles.primary,
     variant === 'secondary' && styles.secondary,
     variant === 'outline' && styles.outline,
+    variant === 'danger' && styles.danger,
     isDisabled && styles.disabled,
     style,
   ];
@@ -40,6 +44,7 @@ export default function Button({
     styles.text,
     variant === 'primary' && styles.textOnPrimary,
     (variant === 'secondary' || variant === 'outline') && styles.textOnMuted,
+    variant === 'danger' && styles.textOnDanger,
     isDisabled && styles.textDisabled,
   ];
 
@@ -88,6 +93,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  danger: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.error,
+  },
   disabled: {
     backgroundColor: colors.surfaceDim,
     borderColor: colors.surfaceDim,
@@ -101,6 +111,9 @@ const styles = StyleSheet.create({
   },
   textOnMuted: {
     color: colors.textPrimary,
+  },
+  textOnDanger: {
+    color: colors.error,
   },
   textDisabled: {
     color: colors.textMuted,
