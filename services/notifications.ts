@@ -100,13 +100,31 @@ export async function registerForPush(): Promise<string | null> {
  * The backend sends `reference_type` and `reference_id` with every one. A
  * type we do not recognise opens the dashboard rather than nothing at all —
  * a tap that appears to do nothing reads as a broken app. */
+/** Where a tapped notification should land.
+ *
+ * Only the two reference types the backend actually sends to a rider are
+ * handled: `delivery_earning` (WalletService.credit_delivery_earning) and
+ * `order` (rider_alerts.alert_nearby_riders). There is deliberately no
+ * branch for "run" or "assignment" -- nothing in markt_python sends either,
+ * and a branch for a value that never arrives is just an untested path that
+ * reads as though it works.
+ *
+ * Both of these previously pointed at routes that do not exist --
+ * "/(delivery)/wallet" (the screen is `earnings`) and "/(delivery)/run/<id>"
+ * (a run is opened through active-delivery with kind+id, the way every other
+ * caller in this app opens one). So tapping "you were paid for that
+ * delivery" -- the notification most worth tapping -- navigated nowhere,
+ * which on a phone is indistinguishable from a broken app.
+ *
+ * An unrecognised type opens the dashboard rather than nothing at all, for
+ * the same reason.
+ */
 export function routeForNotification(data: Record<string, any>): string {
   const type = String(data?.reference_type ?? "");
-  const id = data?.reference_id ? String(data.reference_id) : null;
 
-  if (type === "delivery_earning" || type === "wallet") return "/(delivery)/wallet";
-  if (type === "run" && id) return `/(delivery)/run/${id}`;
-  // An available or assigned order: the dashboard is where it can be taken.
+  if (type === "delivery_earning" || type === "wallet") {
+    return "/(delivery)/earnings";
+  }
   return "/(delivery)/availability-toggle";
 }
 

@@ -1,3 +1,4 @@
+import { MaterialIcons } from '@expo/vector-icons';
 import BottomSheet, { BottomSheetScrollView, BottomSheetView } from '@gorhom/bottom-sheet';
 import React, { useMemo, useState } from 'react';
 import { RefreshControl, StyleSheet, Text, View } from 'react-native';
@@ -6,6 +7,27 @@ import Button from './Button';
 import SectionHeader from './SectionHeader';
 import StatusPill from './StatusPill';
 import { colors, radius, shadow, typography } from './theme';
+
+/** The statuses that mean a stop is behind the rider.
+ *
+ * Four vocabularies meet here: run pickups are lowercase
+ * (pending/arrived/picked_up), run dropoffs carry a pod_status
+ * (pending/qr_issued/delivered), and assignment stops are uppercase
+ * (PENDING/ARRIVED_PICKUP/PICKED_UP, ... /COMPLETED). Rather than teach the
+ * sheet all four, it only has to know which ones are finished -- everything
+ * else is still ahead. */
+const DONE_STATUSES = new Set([
+  'picked_up',
+  'PICKED_UP',
+  'delivered',
+  'DELIVERED',
+  'completed',
+  'COMPLETED',
+]);
+
+function isDone(status: string): boolean {
+  return DONE_STATUSES.has(status);
+}
 
 interface ScreenActions {
   refreshing?: boolean;
@@ -38,6 +60,7 @@ export default function ActiveDeliverySheet({
   // runToStops) only attach onPrimaryAction to the one stop that's
   // actually next, respecting each flow's own gating rules.
   const nextStop = stops.find((s) => s.onPrimaryAction);
+  const doneCount = stops.filter((s) => isDone(s.status)).length;
 
   const runStopAction = async (stop: DeliveryStop) => {
     if (!stop.onPrimaryAction || busyStopId) return;
@@ -61,6 +84,25 @@ export default function ActiveDeliverySheet({
       <BottomSheetView style={styles.summary}>
         <Text style={styles.headerTitle}>{headerTitle}</Text>
         {!!headerSubtitle && <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>}
+
+        {/* How far through the route the rider is. The list said "All stops
+            (5)", which is the one thing about a route you can see by
+            looking -- what you cannot see is how many are behind you. */}
+        {stops.length > 0 && (
+          <View style={styles.progress}>
+            <View style={styles.progressTrack}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${(doneCount / stops.length) * 100}%` },
+                ]}
+              />
+            </View>
+            <Text style={styles.progressText}>
+              {doneCount} of {stops.length} done
+            </Text>
+          </View>
+        )}
         {nextStop ? (
           <View style={styles.nextRow}>
             <View style={{ flex: 1 }}>
@@ -92,15 +134,47 @@ export default function ActiveDeliverySheet({
           ) : undefined
         }
       >
-        <SectionHeader title={`All stops (${stops.length})`} />
-        {stops.map((stop, index) => (
+        <SectionHeader title={`Your route (${stops.length} stops)`} />
+        {stops.map((stop, index) => {
+          const done = isDone(stop.status);
+          const isNext = nextStop?.id === stop.id;
+          const last = index === stops.length - 1;
+
+          return (
           <View key={stop.id} style={styles.stopRow}>
             <View style={styles.stopHeader}>
-              <View style={styles.stopIndex}>
-                <Text style={styles.stopIndexText}>{index + 1}</Text>
+              {/* The rail: a marker per stop joined by a line, so the list
+                  reads as a route rather than as rows that happen to be
+                  stacked. Filled behind the rider, hollow ahead. */}
+              <View style={styles.rail}>
+                <View
+                  style={[
+                    styles.marker,
+                    done && styles.markerDone,
+                    isNext && styles.markerNext,
+                  ]}
+                >
+                  {done ? (
+                    <MaterialIcons name="check" size={14} color="#fff" />
+                  ) : (
+                    <MaterialIcons
+                      name={stop.kind === 'pickup' ? 'storefront' : 'person-pin-circle'}
+                      size={14}
+                      color={isNext ? '#fff' : colors.textSecondary}
+                    />
+                  )}
+                </View>
+                {!last && (
+                  <View style={[styles.railLine, done && styles.railLineDone]} />
+                )}
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.stopTitle}>{stop.title}</Text>
+              <View style={{ flex: 1, paddingBottom: last ? 0 : 4 }}>
+                <Text style={styles.stopKind}>
+                  {stop.kind === 'pickup' ? 'PICK UP' : 'DROP OFF'}
+                </Text>
+                <Text style={[styles.stopTitle, done && styles.stopTitleDone]}>
+                  {stop.title}
+                </Text>
                 {!!stop.subtitle && <Text style={styles.stopSubtitle}>{stop.subtitle}</Text>}
                 <StatusPill status={stop.status} />
               </View>
@@ -127,13 +201,14 @@ export default function ActiveDeliverySheet({
               </View>
             )}
           </View>
-        ))}
+          );
+        })}
 
         {screenActions?.onDangerAction && (
           <Button
             label={screenActions.dangerActionLabel ?? 'Cancel'}
             onPress={screenActions.onDangerAction}
-            variant="outline"
+            variant="danger"
             style={styles.dangerButton}
           />
         )}
@@ -191,18 +266,75 @@ const styles = StyleSheet.create({
   },
   stopRow: {
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
+    // No divider: the rail runs through these rows and a hairline across it
+    // chops the route into segments.
   },
   stopHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 12,
   },
+
+  progress: { marginTop: 12 },
+  progressTrack: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.surface,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.primary,
+  },
+  progressText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: 6,
+  },
+
+  rail: { alignItems: 'center', alignSelf: 'stretch' },
+  marker: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  markerDone: {
+    backgroundColor: colors.textMuted,
+    borderColor: colors.textMuted,
+  },
+  markerNext: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  railLine: {
+    flex: 1,
+    width: 2,
+    minHeight: 12,
+    marginTop: 2,
+    backgroundColor: colors.border,
+  },
+  railLineDone: { backgroundColor: colors.textMuted },
+
+  stopKind: {
+    ...typography.label,
+    fontSize: 10,
+    color: colors.textMuted,
+    marginBottom: 2,
+  },
+  stopTitleDone: { color: colors.textSecondary },
   stopActions: {
     flexDirection: 'row',
     gap: 8,
     marginTop: 10,
+    // Indented past the rail so the actions line up with the stop they
+    // belong to rather than with the markers.
+    marginLeft: 40,
   },
   stopIndex: {
     width: 28,
@@ -227,8 +359,5 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 6,
   },
-  dangerButton: {
-    marginTop: 20,
-    borderColor: colors.error,
-  },
+  dangerButton: { marginTop: 20 },
 });

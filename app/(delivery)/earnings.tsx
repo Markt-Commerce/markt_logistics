@@ -9,7 +9,7 @@ import SectionEmpty from '../../components/SectionEmpty';
 import EarningsSummary from '../../components/EarningsSummary';
 import SectionHeader from '../../components/SectionHeader';
 import StatusPill from '../../components/StatusPill';
-import { colors, radius, spacing, typography } from '../../components/theme';
+import { colors, radius, spacing, tones, typography } from '../../components/theme';
 import apiService from '../../services/api';
 import { Bank, WalletTransaction, Withdrawal } from '../../types';
 
@@ -440,7 +440,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  txIconCredit: { backgroundColor: '#E7F6EC' },
+  txIconCredit: { backgroundColor: tones.positive.bg },
   txIconDebit: { backgroundColor: colors.surface },
   row: {
     flexDirection: 'row',
