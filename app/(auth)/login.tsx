@@ -128,7 +128,16 @@ export default function LoginScreen() {
       try {
         const response = await apiService.sendOtp(fullNumber);
         if (response.status !== "success") {
-          setError("We could not send the code. Try again in a moment.");
+          // Not "try again in a moment". The two things that land here are
+          // a number that is not registered and an address the code cannot
+          // be delivered to, and waiting fixes neither -- so saying so sends
+          // riders round a loop that can never end. The server's own message
+          // is the specific one where it has something specific to say.
+          setError(
+            response.message ||
+              "We could not send a code to that number. Check the digits, " +
+                "or contact support if they are right."
+          );
           return;
         }
         setSecondsLeft(RESEND_SECONDS);
@@ -137,6 +146,7 @@ export default function LoginScreen() {
         // "code sent" only adds a tap between the rider and the box they
         // now have to type into.
       } catch {
+        // This one genuinely is worth retrying: the request never landed.
         setError("We could not reach Markt. Check your connection and try again.");
       } finally {
         setResending(false);
