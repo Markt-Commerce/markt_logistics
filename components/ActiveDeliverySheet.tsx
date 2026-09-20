@@ -6,6 +6,7 @@ import { DeliveryStop } from '../types';
 import Button from './Button';
 import SectionHeader from './SectionHeader';
 import SlideToConfirm from './SlideToConfirm';
+import { canNavigateTo, openDirections } from '../utils/navigation';
 import StatusPill from './StatusPill';
 import { colors, radius, shadow, TAB_BAR_HEIGHT, typography } from './theme';
 
@@ -145,34 +146,51 @@ export default function ActiveDeliverySheet({
         )}
         {nextStop ? (
           <>
-            {nextStop.confirmBySlide ? (
-              // The last step, and the only one that cannot be undone.
-              // Full width, under its own heading, rather than sharing a
-              // row with the stop name -- a slider squeezed beside a
-              // label has nowhere to travel.
-              <View style={styles.nextStack}>
-                <Text style={styles.nextLabel}>Next</Text>
-                <Text style={styles.nextTitle}>{nextStop.title}</Text>
+            {/* One layout, whichever way the step is confirmed.
+                This was two, and the tap variant had quietly become
+                unreachable once every step became a swipe -- so a
+                Directions link added to it would never have rendered.
+                The heading, the stop and the directions are the same
+                either way; only the control differs. */}
+            <View style={styles.nextStack}>
+              <Text style={styles.nextLabel}>Next</Text>
+              <Text style={styles.nextTitle}>{nextStop.title}</Text>
+
+              {/* Repeated from the route below on purpose: this is the
+                  stop they are riding to right now, and the summary is
+                  the part of the sheet that stays on screen when it is
+                  collapsed. */}
+              {canNavigateTo({ coords: nextStop.coords, label: nextStop.subtitle }) && (
+                <Pressable
+                  onPress={() =>
+                    openDirections({ coords: nextStop.coords, label: nextStop.subtitle })
+                  }
+                  style={styles.directionsRow}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Directions to ${nextStop.title}`}
+                  hitSlop={8}
+                >
+                  <MaterialIcons name="directions" size={15} color={colors.primary} />
+                  <Text style={styles.directionsText}>Directions</Text>
+                </Pressable>
+              )}
+
+              {nextStop.confirmBySlide ? (
+                // Full width and on its own line: a slider squeezed
+                // beside a label has nowhere to travel.
                 <SlideToConfirm
                   label={nextStop.primaryActionLabel ?? 'Slide to confirm'}
                   loading={busyStopId === nextStop.id}
                   onConfirm={() => runStopAction(nextStop)}
                 />
-              </View>
-            ) : (
-              <View style={styles.nextRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.nextLabel}>Next</Text>
-                  <Text style={styles.nextTitle}>{nextStop.title}</Text>
-                </View>
+              ) : (
                 <Button
                   label={nextStop.primaryActionLabel ?? 'Continue'}
                   onPress={() => runStopAction(nextStop)}
                   loading={busyStopId === nextStop.id}
-                  style={styles.nextButton}
                 />
-              </View>
-            )}
+              )}
+            </View>
             {/* What the button commits them to, next to the button
                 itself. Every action here was labelled with a state --
                 "Arrived at pickup", "Confirm pickup" -- and a rider on
@@ -284,7 +302,27 @@ export default function ActiveDeliverySheet({
                 <Text style={[styles.stopTitle, done && styles.stopTitleDone]}>
                   {stop.title}
                 </Text>
-                {!!stop.subtitle && <Text style={styles.stopSubtitle}>{stop.subtitle}</Text>}
+                {/* The address is the thing to act on, so it is the
+                    thing you tap. A rider had it on screen and no way
+                    to use it: read it out, switch apps, type it in --
+                    at a junction, one-handed. */}
+                {!!stop.subtitle &&
+                  (canNavigateTo({ coords: stop.coords, label: stop.subtitle }) ? (
+                    <Pressable
+                      onPress={() =>
+                        openDirections({ coords: stop.coords, label: stop.subtitle })
+                      }
+                      style={styles.directionsRow}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Directions to ${stop.subtitle}`}
+                      hitSlop={6}
+                    >
+                      <Text style={styles.stopSubtitleLink}>{stop.subtitle}</Text>
+                      <MaterialIcons name="directions" size={16} color={colors.primary} />
+                    </Pressable>
+                  ) : (
+                    <Text style={styles.stopSubtitle}>{stop.subtitle}</Text>
+                  ))}
                 <StatusPill status={stop.status} />
                 {/* Which parcel is this one's. On a batched run the
                     rider is carrying several bags from the same shop
@@ -397,12 +435,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
   },
-  nextRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 14,
-  },
   nextLabel: {
     ...typography.label,
     color: colors.textMuted,
@@ -411,9 +443,6 @@ const styles = StyleSheet.create({
   nextTitle: {
     ...typography.bodyBold,
     color: colors.textPrimary,
-  },
-  nextButton: {
-    paddingHorizontal: 20,
   },
   nextStack: { marginTop: 14, gap: 4 },
   nextHint: {
@@ -535,6 +564,20 @@ const styles = StyleSheet.create({
   stopTitle: {
     ...typography.bodyBold,
     color: colors.textPrimary,
+  },
+  directionsText: { ...typography.caption, color: colors.primary, fontWeight: '700' },
+  directionsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginTop: 2,
+    marginBottom: 6,
+  },
+  stopSubtitleLink: {
+    ...typography.caption,
+    color: colors.primary,
+    flexShrink: 1,
+    textDecorationLine: 'underline',
   },
   stopSubtitle: {
     ...typography.caption,
