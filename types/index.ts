@@ -51,6 +51,10 @@ export interface Withdrawal {
 }
 
 export interface Bank {
+  /** Paystack's own id. `code` is what a transfer is addressed to but is
+   *  not unique across their list -- five NGN codes come back twice
+   *  under two registered names -- so it cannot be a React key. */
+  id?: number | null;
   name: string;
   code: string;
   slug?: string | null;
@@ -281,10 +285,13 @@ export interface DeliveryStop {
   /** The shop's picture, so a rider is looking for a storefront rather
    *  than reading a name off a list. Pickup stops only. */
   image?: string | null;
-  /** This action cannot be undone, so it is confirmed by a deliberate
-   *  swipe rather than a tap. Set only on the proof-of-delivery step:
-   *  it releases the parcel and the rider's pay, there is no transition
-   *  back out of it, and it is done one-handed at somebody's gate. */
+  /** Confirmed by a deliberate swipe rather than a tap.
+   *
+   *  Set on every step a rider reports. They are all done one-handed,
+   *  on a bike, at a gate or a stall counter, and each one tells the
+   *  shop or the buyer something awkward to walk back -- a mis-tapped
+   *  "I've arrived" sends somebody to their door for nothing, and there
+   *  is no transition back out of a confirmed delivery at all. */
   confirmBySlide?: boolean;
   /** What to do here, in one line, on the one stop that is actionable.
    *  A rider new to the app was shown a button labelled with a state

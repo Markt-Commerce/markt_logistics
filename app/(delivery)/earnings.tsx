@@ -14,6 +14,13 @@ import { Bank, WalletTransaction, Withdrawal } from '../../types';
 
 type WithdrawStep = 'bank' | 'details';
 
+/** Mirrors MIN_WITHDRAWAL_AMOUNT in markt_python's WalletService.
+ *
+ * The server is the authority and refuses below it either way; this
+ * copy exists so a rider is told before they pick a bank and verify an
+ * account, rather than after. */
+const MIN_WITHDRAWAL = 1000;
+
 /** What a ledger row means, in the rider's words.
  *
  * The row used to print `description ?? referenceType`, so when the backend
@@ -28,6 +35,25 @@ const REFERENCE_LABELS: Record<string, string> = {
   adjustment: 'Adjustment',
   ADJUSTMENT: 'Adjustment',
 };
+
+/** Up to two letters, skipping the words every third bank shares.
+ *
+ * "Bank", "Microfinance" and "MFB" appear in most of the 284 names, so
+ * initialling them gives half the list the same monogram. */
+const NOISE = new Set(['bank', 'microfinance', 'mfb', 'ltd', 'limited', 'plc', 'and']);
+
+function initials(name: string): string {
+  const words = name
+    .replace(/[^\p{L}\p{N} ]/gu, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+  const meaningful = words.filter((word) => !NOISE.has(word.toLowerCase()));
+  const source = meaningful.length ? meaningful : words;
+  return source
+    .slice(0, 2)
+    .map((word) => word[0].toUpperCase())
+    .join('');
+}
 
 function labelFor(tx: WalletTransaction): string {
   return (
@@ -79,6 +105,7 @@ export default function EarningsScreen() {
   const [accountNumber, setAccountNumber] = useState('');
   const [resolvedName, setResolvedName] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
+  const [withdrawError, setWithdrawError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const sheetRef = useRef<BottomSheet>(null);
@@ -86,6 +113,31 @@ export default function EarningsScreen() {
   // No synchronous setState before the first await -- `loading` already
   // initializes to true, same pattern as the rest of this app's screens.
   const canWithdraw = (balance ?? 0) > 0;
+
+  /** What is wrong with the amount typed so far, in the rider's words.
+   *
+   * The server enforces all of this and always did -- but only after
+   * the rider had chosen a bank, verified an account and tapped
+   * confirm, and the message it sent back was being swallowed into
+   * console.error. So the whole thing read as a button that did
+   * nothing. Mirrors WalletService.request_withdrawal deliberately,
+   * including its one exception: the floor is waived for emptying a
+   * balance already under it, so a small balance can always be taken
+   * out. */
+  const amountProblem = useMemo((): string | null => {
+    if (!amount) return null;
+    const value = Number(amount);
+    if (!Number.isFinite(value) || value <= 0) return 'Enter an amount.';
+
+    const available = balance ?? 0;
+    if (value > available) {
+      return `You have ₦${available.toLocaleString()} to withdraw.`;
+    }
+    if (value < MIN_WITHDRAWAL && value !== available) {
+      return `Withdraw at least ₦${MIN_WITHDRAWAL.toLocaleString()}, or take out everything you have.`;
+    }
+    return null;
+  }, [amount, balance]);
   const [walletTab, setWalletTab] = useState<'activity' | 'withdrawals'>('activity');
 
   const load = useCallback(async () => {
@@ -136,6 +188,7 @@ export default function EarningsScreen() {
     // Otherwise reopening the sheet shows last time's search still
     // applied, over a list that looks like it is missing most banks.
     setBankQuery('');
+    setWithdrawError(null);
   };
 
   const openWithdraw = async () => {
@@ -192,10 +245,11 @@ export default function EarningsScreen() {
   };
 
   const handleWithdraw = async () => {
-    if (!selectedBank || !resolvedName) return;
+    if (!selectedBank || !resolvedName || amountProblem) return;
     const numericAmount = Number(amount);
     if (!numericAmount || numericAmount <= 0) return;
     setSubmitting(true);
+    setWithdrawError(null);
     try {
       await apiService.requestWithdrawal({
         amount: numericAmount,
@@ -205,8 +259,13 @@ export default function EarningsScreen() {
       });
       closeWithdraw();
       load();
-    } catch (error) {
+    } catch (error: any) {
+      // Swallowed into console.error before, so a refused withdrawal
+      // looked like a button that did nothing -- including the
+      // server's own "insufficient balance", which was the one message
+      // that would have explained it.
       console.error('Error requesting withdrawal:', error);
+      setWithdrawError(error?.message || 'Could not request that withdrawal.');
     } finally {
       setSubmitting(false);
     }
@@ -433,11 +492,28 @@ export default function EarningsScreen() {
                 ) : (
                   visibleBanks.map((bank) => (
                     <TouchableOpacity
-                      key={bank.code}
+                      // Not `code`. Paystack's list is not unique on it
+                      // -- five NGN codes come back twice under two
+                      // registered names -- and React threw
+                      // "two children with the same key, .$50572" on
+                      // BANKIT MFB. The server dedupes now; this keys on
+                      // something unique by contract rather than
+                      // trusting that it did.
+                      key={bank.id ?? `${bank.code}-${bank.slug ?? bank.name}`}
                       style={styles.bankRow}
                       onPress={() => pickBank(bank)}
                     >
-                      <Text style={styles.bankName}>{bank.name}</Text>
+                      {/* Paystack sends no logo of any kind -- their row
+                          is id/name/code/slug/type and some booleans --
+                          so initials, which at least make the list
+                          scannable by shape rather than by reading 284
+                          lines of text. */}
+                      <View style={styles.bankMono}>
+                        <Text style={styles.bankMonoText}>{initials(bank.name)}</Text>
+                      </View>
+                      <Text style={styles.bankName} numberOfLines={1}>
+                        {bank.name}
+                      </Text>
                       <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} />
                     </TouchableOpacity>
                   ))
@@ -479,20 +555,45 @@ export default function EarningsScreen() {
               </View>
             )}
 
-            <Text style={[styles.inputLabel, { marginTop: 18 }]}>Amount</Text>
+            <View style={styles.amountHeader}>
+              <Text style={styles.inputLabel}>Amount</Text>
+              {/* Emptying the wallet is the common case and was a sum
+                  the rider had to read off the header and retype. */}
+              <TouchableOpacity
+                onPress={() => {
+                  setWithdrawError(null);
+                  setAmount(String(Math.floor(balance ?? 0)));
+                }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Withdraw everything"
+              >
+                <Text style={styles.amountAll}>
+                  All ₦{(balance ?? 0).toLocaleString()}
+                </Text>
+              </TouchableOpacity>
+            </View>
             <BottomSheetTextInput
-              style={styles.input}
+              style={[styles.input, !!amountProblem && styles.inputBad]}
               value={amount}
-              onChangeText={setAmount}
+              onChangeText={(next) => {
+                setWithdrawError(null);
+                // Digits only. A number-pad still offers a decimal
+                // point on iOS, and "500.00.00" reached the server as
+                // NaN and came back as a generic failure.
+                setAmount(next.replace(/[^0-9]/g, ''));
+              }}
               keyboardType="number-pad"
               placeholder="₦"
             />
+            {!!amountProblem && <Text style={styles.inputError}>{amountProblem}</Text>}
+            {!!withdrawError && <Text style={styles.inputError}>{withdrawError}</Text>}
 
             <Button
               label="Confirm withdrawal"
               onPress={handleWithdraw}
               loading={submitting}
-              disabled={!resolvedName || !amount || submitting}
+              disabled={!resolvedName || !amount || !!amountProblem || submitting}
               style={{ marginTop: 20 }}
             />
           </BottomSheetView>
@@ -650,15 +751,33 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
     textAlign: 'center',
   },
+  amountHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginTop: 18,
+  },
+  amountAll: { ...typography.caption, color: colors.primary, fontWeight: '700' },
+  inputBad: { borderColor: colors.error },
+  inputError: { ...typography.caption, color: colors.error, marginTop: 6 },
+  bankMono: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.primaryMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bankMonoText: { ...typography.caption, color: colors.primary, fontWeight: '800' },
   bankRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
+    gap: 12,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
   },
-  bankName: { ...typography.body, color: colors.textPrimary },
+  bankName: { ...typography.body, color: colors.textPrimary, flex: 1 },
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 18 },
   backText: { ...typography.bodyBold, color: colors.textPrimary },
   inputLabel: { ...typography.label, color: colors.textMuted, marginBottom: 8 },
