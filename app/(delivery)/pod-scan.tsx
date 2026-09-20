@@ -50,25 +50,27 @@ export default function PodScanScreen() {
     if (isOrderMode ? !assignmentId : !runId) return;
     setSubmitting(true);
     try {
+      // Leave first, then say so.
+      //
+      // Both branches used to navigate from the alert's OK handler, and
+      // that handler does not always run -- an Android alert dismissed by
+      // tapping outside it fires nothing. The rider was left staring at a
+      // live camera for a delivery they had already confirmed, with
+      // `submitting` latched on so the screen could not even be used
+      // again. The confirmation is worth showing; it is not worth being
+      // the only way off the screen.
       if (isOrderMode) {
         await apiService.confirmDelivery(orderId, code.trim());
-        Alert.alert('Delivered', 'Delivery confirmed.', [
-          { text: 'OK', onPress: () => router.replace('/(delivery)/availability-toggle') },
-        ]);
+        router.replace('/(delivery)/availability-toggle');
+        Alert.alert('Delivered', 'Delivery confirmed.');
       } else {
         const result = await apiService.confirmRunOrderPod(runId!, orderId, code.trim());
+        router.replace({ pathname: '/(delivery)/active-delivery', params: { kind: 'run', id: runId! } });
         Alert.alert(
           'Delivered',
           result.run_completed
             ? 'Order confirmed. That was the last one -- run complete!'
-            : 'Order confirmed as delivered.',
-          [
-            {
-              text: 'OK',
-              onPress: () =>
-                router.replace({ pathname: '/(delivery)/active-delivery', params: { kind: 'run', id: runId! } }),
-            },
-          ]
+            : 'Order confirmed as delivered.'
         );
       }
     } catch (error) {
