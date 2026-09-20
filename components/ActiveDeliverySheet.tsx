@@ -5,6 +5,7 @@ import { Image, Linking, Pressable, RefreshControl, StyleSheet, Text, View } fro
 import { DeliveryStop } from '../types';
 import Button from './Button';
 import SectionHeader from './SectionHeader';
+import SlideToConfirm from './SlideToConfirm';
 import StatusPill from './StatusPill';
 import { colors, radius, shadow, typography } from './theme';
 
@@ -36,11 +37,23 @@ interface ScreenActions {
   onDangerAction?: () => void;
 }
 
+interface ParcelLine {
+  name: string;
+  quantity: number;
+  variant?: string | null;
+}
+
 interface ActiveDeliverySheetProps {
   headerTitle: string;
   headerSubtitle?: string;
   stops: DeliveryStop[];
   screenActions?: ScreenActions;
+  /** The order number. What the shop looks this parcel up by, and the
+   *  only string on the screen that both sides can read off. */
+  reference?: string | null;
+  /** What is in the bag, line by line. A rider handed a parcel had a
+   *  count and nothing to check it against. */
+  parcel?: ParcelLine[];
 }
 
 // The persistent map+sheet experience shared by both single-order and
@@ -52,6 +65,8 @@ export default function ActiveDeliverySheet({
   headerSubtitle,
   stops,
   screenActions,
+  reference,
+  parcel,
 }: ActiveDeliverySheetProps) {
   const snapPoints = useMemo(() => ['22%', '82%'], []);
   const [busyStopId, setBusyStopId] = useState<string | null>(null);
@@ -111,18 +126,34 @@ export default function ActiveDeliverySheet({
         )}
         {nextStop ? (
           <>
-            <View style={styles.nextRow}>
-              <View style={{ flex: 1 }}>
+            {nextStop.confirmBySlide ? (
+              // The last step, and the only one that cannot be undone.
+              // Full width, under its own heading, rather than sharing a
+              // row with the stop name -- a slider squeezed beside a
+              // label has nowhere to travel.
+              <View style={styles.nextStack}>
                 <Text style={styles.nextLabel}>Next</Text>
                 <Text style={styles.nextTitle}>{nextStop.title}</Text>
+                <SlideToConfirm
+                  label={nextStop.primaryActionLabel ?? 'Slide to confirm'}
+                  loading={busyStopId === nextStop.id}
+                  onConfirm={() => runStopAction(nextStop)}
+                />
               </View>
-              <Button
-                label={nextStop.primaryActionLabel ?? 'Continue'}
-                onPress={() => runStopAction(nextStop)}
-                loading={busyStopId === nextStop.id}
-                style={styles.nextButton}
-              />
-            </View>
+            ) : (
+              <View style={styles.nextRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.nextLabel}>Next</Text>
+                  <Text style={styles.nextTitle}>{nextStop.title}</Text>
+                </View>
+                <Button
+                  label={nextStop.primaryActionLabel ?? 'Continue'}
+                  onPress={() => runStopAction(nextStop)}
+                  loading={busyStopId === nextStop.id}
+                  style={styles.nextButton}
+                />
+              </View>
+            )}
             {/* What the button commits them to, next to the button
                 itself. Every action here was labelled with a state --
                 "Arrived at pickup", "Confirm pickup" -- and a rider on
@@ -149,6 +180,39 @@ export default function ActiveDeliverySheet({
           ) : undefined
         }
       >
+        {/* What this delivery is, in the sheet rather than behind
+            another tap. The rider needed the order number to be given
+            the right bag and the contents to know it is the right bag,
+            and neither was anywhere on this screen. */}
+        {(!!reference || !!parcel?.length) && (
+          <View style={styles.parcelCard}>
+            {!!reference && (
+              <View style={styles.parcelRefRow}>
+                <Text style={styles.parcelRefLabel}>ORDER</Text>
+                <Text style={styles.parcelRef} selectable>
+                  {reference}
+                </Text>
+              </View>
+            )}
+            {!!parcel?.length && (
+              <>
+                <Text style={styles.parcelTitle}>
+                  Check these before you accept the parcel
+                </Text>
+                {parcel.map((line, index) => (
+                  <View key={`${line.name}-${index}`} style={styles.parcelLine}>
+                    <Text style={styles.parcelQty}>{line.quantity}×</Text>
+                    <Text style={styles.parcelName} numberOfLines={2}>
+                      {line.name}
+                      {line.variant ? ` · ${line.variant}` : ''}
+                    </Text>
+                  </View>
+                ))}
+              </>
+            )}
+          </View>
+        )}
+
         <SectionHeader title={`Your route (${stops.length} stops)`} />
         {stops.map((stop, index) => {
           const done = isDone(stop.status);
@@ -239,13 +303,23 @@ export default function ActiveDeliverySheet({
                   />
                 )}
                 {stop.onPrimaryAction && !isNext && (
-                  <Button
-                    label={stop.primaryActionLabel ?? 'Continue'}
-                    onPress={() => runStopAction(stop)}
-                    loading={busyStopId === stop.id}
-                    variant="secondary"
-                    style={{ flex: 1 }}
-                  />
+                  stop.confirmBySlide ? (
+                    <View style={{ flex: 1 }}>
+                      <SlideToConfirm
+                        label={stop.primaryActionLabel ?? 'Slide to confirm'}
+                        loading={busyStopId === stop.id}
+                        onConfirm={() => runStopAction(stop)}
+                      />
+                    </View>
+                  ) : (
+                    <Button
+                      label={stop.primaryActionLabel ?? 'Continue'}
+                      onPress={() => runStopAction(stop)}
+                      loading={busyStopId === stop.id}
+                      variant="secondary"
+                      style={{ flex: 1 }}
+                    />
+                  )
                 )}
               </View>
             )}
@@ -310,6 +384,7 @@ const styles = StyleSheet.create({
   nextButton: {
     paddingHorizontal: 20,
   },
+  nextStack: { marginTop: 14, gap: 4 },
   nextHint: {
     ...typography.caption,
     color: colors.textSecondary,
@@ -439,6 +514,21 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 6,
   },
+  parcelCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius,
+    padding: 14,
+    marginBottom: 20,
+    gap: 6,
+  },
+  parcelRefRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  parcelRefLabel: { ...typography.label, fontSize: 10, color: colors.textMuted },
+  parcelRef: { ...typography.bodyBold, color: colors.textPrimary },
+  parcelTitle: { ...typography.caption, color: colors.textSecondary, marginTop: 4 },
+  parcelLine: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  parcelQty: { ...typography.bodyBold, color: colors.primary, minWidth: 26 },
+  parcelName: { ...typography.body, color: colors.textPrimary, flex: 1 },
   stopHint: {
     ...typography.caption,
     color: colors.textMuted,

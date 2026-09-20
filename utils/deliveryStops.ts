@@ -54,6 +54,7 @@ export function assignmentToStops(assignment: Assignment, ctx: AssignmentStopsCo
   let dropoffActionLabel: string | undefined;
   let dropoffAction: (() => Promise<void>) | undefined;
   let dropoffHint: string | undefined;
+  let dropoffBySlide = false;
   if (step === 'PICKED_UP') {
     dropoffActionLabel = 'Head to buyer';
     dropoffAction = () => ctx.onStatusUpdate('EN_ROUTE_TO_DROPOFF');
@@ -63,9 +64,10 @@ export function assignmentToStops(assignment: Assignment, ctx: AssignmentStopsCo
     dropoffAction = () => ctx.onStatusUpdate('DELIVERED_PENDING_QR');
     dropoffHint = 'Tap this at the door. The buyer gets their delivery code the moment you do.';
   } else if (step === 'DELIVERED_PENDING_QR') {
-    dropoffActionLabel = 'Confirm delivery code';
+    dropoffActionLabel = 'Slide to confirm delivery';
     dropoffAction = async () => ctx.onGoToPodConfirm();
     dropoffHint = 'Ask the buyer for their code, or scan it. This is what releases your pay.';
+    dropoffBySlide = true;
   } else if (step === 'COMPLETED') {
     dropoffHint = 'Delivered and confirmed. Your earnings are on the way to your wallet.';
   }
@@ -102,6 +104,7 @@ export function assignmentToStops(assignment: Assignment, ctx: AssignmentStopsCo
       phone: assignment.buyerPhone,
       primaryActionLabel: dropoffActionLabel,
       onPrimaryAction: dropoffAction,
+      confirmBySlide: dropoffBySlide,
       hint: dropoffHint,
     },
   ];
@@ -160,9 +163,11 @@ export function runToStops(run: RunDetail, ctx: RunStopsContext): DeliveryStop[]
     let secondaryActionLabel: string | undefined;
     let onSecondaryAction: (() => void) | undefined;
     let hint: string | undefined;
+    let confirmBySlide = false;
     if (order.pod_status === 'qr_issued') {
-      primaryActionLabel = 'Confirm delivery';
+      primaryActionLabel = 'Slide to confirm delivery';
       onPrimaryAction = async () => ctx.onGoToPodConfirm(order.order_id);
+      confirmBySlide = true;
       secondaryActionLabel = 'Report issue';
       onSecondaryAction = () => ctx.onGoToReportFailure(order.order_id);
       hint = 'Ask the buyer for their code, or scan it. This is what releases your pay for this drop.';
@@ -190,6 +195,7 @@ export function runToStops(run: RunDetail, ctx: RunStopsContext): DeliveryStop[]
       status: order.pod_status,
       primaryActionLabel,
       onPrimaryAction,
+      confirmBySlide,
       secondaryActionLabel,
       onSecondaryAction,
       hint,

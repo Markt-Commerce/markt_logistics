@@ -111,6 +111,7 @@ function normalizeAssignment(raw: any): Assignment {
     sellerImage: raw.seller_image ?? null,
     pickupAddress: raw.pickup_address ?? null,
     sellerPhone: raw.seller_phone ?? null,
+    items: Array.isArray(raw.items) ? raw.items : [],
     buyerName: raw.buyer_name ?? null,
     dropoffAddress: raw.dropoff_address ?? null,
     buyerPhone: raw.buyer_phone ?? null,

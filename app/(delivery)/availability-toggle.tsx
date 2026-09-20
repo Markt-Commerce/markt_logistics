@@ -6,11 +6,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, Image, Pressable, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../../components/Button';
+import ActiveWorkCarousel from '../../components/ActiveWorkCarousel';
 import LiveMap from '../../components/LiveMap';
-import OfferCountdown from '../../components/OfferCountdown';
+import OfferCountdown, { OfferSecondsBadge } from '../../components/OfferCountdown';
 import SectionEmpty from '../../components/SectionEmpty';
-import SectionHeader from '../../components/SectionHeader';
-import StatusPill from '../../components/StatusPill';
 import { colors, radius, shadow, spacing, typography } from '../../components/theme';
 import { useReportLocation } from '../../hooks/useReportLocation';
 import apiService, { OrderTakenError } from '../../services/api';
@@ -435,28 +434,77 @@ export default function DashboardMapScreen() {
 
             {selection.kind === 'order' ? (
               <>
-                {/* What the job is, before the money. This card showed
-                    "Order #a1b2c3d4" and two numbers, and a rider had
-                    seconds to decide on it -- no shop, no street, nothing
-                    to recognise. The shop's name is the title now and the
-                    order id has moved to a line underneath, because the
-                    id is the one thing on here a rider cannot act on. */}
-                <View style={styles.previewHead}>
-                  {selection.item.sellerImage ? (
-                    <Image source={{ uri: selection.item.sellerImage }} style={styles.previewShopImage} />
-                  ) : (
-                    <View style={[styles.previewShopImage, styles.previewShopFallback]}>
-                      <MaterialIcons name="storefront" size={20} color={colors.textSecondary} />
-                    </View>
+                {/* What it pays, first and biggest. A rider deciding
+                    inside a thirty-second hold reads one number and
+                    then looks for the reasons to say no -- so the fee
+                    leads, and the shop, the distance and where it is
+                    going sit under it in that order. The order id, the
+                    one thing on here nobody can act on, is gone from
+                    the top entirely. */}
+                <Text style={styles.offerFee}>{money(selection.item.estimatedEarnings)}</Text>
+                <Text style={styles.offerFeeNote}>
+                  Your earnings for this delivery
+                </Text>
+
+                <View style={styles.offerFactsRow}>
+                  <Text style={styles.offerFact}>
+                    {km(selection.item.distanceMeters)} to pick up
+                  </Text>
+                  {(selection.item.pickupCount ?? 1) > 1 && (
+                    <Text style={styles.offerFact}>
+                      · {selection.item.pickupCount} shops
+                    </Text>
                   )}
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.previewTitle} numberOfLines={1}>
-                      {selection.item.sellerName || 'Pickup from seller'}
+                  {!!selection.item.itemCount && (
+                    <Text style={styles.offerFact}>
+                      · {selection.item.itemCount}{' '}
+                      {selection.item.itemCount === 1 ? 'item' : 'items'}
                     </Text>
-                    <Text style={styles.previewSubtitle} numberOfLines={2}>
-                      {selection.item.pickupAddress ||
-                        `Order #${selection.item.orderId.slice(0, 8)}`}
-                    </Text>
+                  )}
+                </View>
+
+                {/* The two ends of the trip, as a route rather than as
+                    rows of a table. */}
+                <View style={styles.offerRoute}>
+                  <View style={styles.offerStop}>
+                    {selection.item.sellerImage ? (
+                      <Image source={{ uri: selection.item.sellerImage }} style={styles.offerThumb} />
+                    ) : (
+                      <View style={[styles.offerThumb, styles.offerThumbEmpty]}>
+                        <MaterialIcons name="storefront" size={16} color={colors.textSecondary} />
+                      </View>
+                    )}
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.offerStopLabel}>PICK UP</Text>
+                      <Text style={styles.offerStopName} numberOfLines={1}>
+                        {selection.item.sellerName || 'Pickup from seller'}
+                      </Text>
+                      {!!selection.item.pickupAddress && (
+                        <Text style={styles.offerStopMeta} numberOfLines={1}>
+                          {selection.item.pickupAddress}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+
+                  <View style={styles.offerRouteLine} />
+
+                  <View style={styles.offerStop}>
+                    <View style={[styles.offerThumb, styles.offerThumbEmpty]}>
+                      <MaterialIcons name="place" size={16} color={colors.textSecondary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.offerStopLabel}>DROP OFF</Text>
+                      <Text style={styles.offerStopName} numberOfLines={1}>
+                        {selection.item.dropoffArea || 'Customer drop-off'}
+                      </Text>
+                      {/* The buyer's exact address stays hidden until
+                          they have accepted -- the area is enough to
+                          judge the trip on. */}
+                      <Text style={styles.offerStopMeta}>
+                        Full address once you accept
+                      </Text>
+                    </View>
                   </View>
                 </View>
 
@@ -468,60 +516,43 @@ export default function DashboardMapScreen() {
                   />
                 )}
                 {offerError && <Text style={styles.previewNotice}>{offerError}</Text>}
-
-                <View style={styles.previewRow}>
-                  <Text style={styles.previewLabel}>You earn</Text>
-                  <Text style={styles.previewValueStrong}>
-                    {money(selection.item.estimatedEarnings)}
-                  </Text>
-                </View>
-                <View style={styles.previewRow}>
-                  <Text style={styles.previewLabel}>Distance</Text>
-                  <Text style={styles.previewValue}>{km(selection.item.distanceMeters)}</Text>
-                </View>
-                {/* A second shop is a second stop, and that is the
-                    difference between a ten-minute job and a half-hour
-                    one. Only shown when there is more than one, so the
-                    ordinary case stays quiet. */}
-                {(selection.item.pickupCount ?? 1) > 1 && (
-                  <View style={styles.previewRow}>
-                    <Text style={styles.previewLabel}>Pickups</Text>
-                    <Text style={styles.previewValue}>
-                      {selection.item.pickupCount} shops
-                    </Text>
-                  </View>
-                )}
-                {!!selection.item.itemCount && (
-                  <View style={styles.previewRow}>
-                    <Text style={styles.previewLabel}>Carrying</Text>
-                    <Text style={styles.previewValue}>
-                      {selection.item.itemCount}{' '}
-                      {selection.item.itemCount === 1 ? 'item' : 'items'}
-                    </Text>
-                  </View>
-                )}
-                {!!selection.item.dropoffArea && (
-                  <View style={styles.previewRow}>
-                    <Text style={styles.previewLabel}>Going to</Text>
-                    <Text style={styles.previewValue}>{selection.item.dropoffArea}</Text>
-                  </View>
-                )}
                 {atCapacity && (
                   <Text style={styles.previewNotice}>
                     You are carrying {carrying} already. Finish one and this
                     is yours to take.
                   </Text>
                 )}
-                <View style={styles.previewActions}>
-                  <Button label="Decline" variant="outline" onPress={handleDeclineOrder} disabled={acting} style={{ flex: 1 }} />
-                  <Button
-                    label={offerError ? 'Back to list' : 'Accept order'}
-                    onPress={offerError ? closePreview : handleAcceptOrder}
-                    loading={acting}
-                    disabled={atCapacity && !offerError}
-                    style={{ flex: 1 }}
-                  />
-                </View>
+
+                {offerError ? (
+                  <Button label="Back to list" onPress={closePreview} />
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.acceptButton, (acting || atCapacity) && styles.acceptButtonOff]}
+                    onPress={handleAcceptOrder}
+                    disabled={acting || atCapacity}
+                    activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityLabel="Accept this order"
+                  >
+                    {acting ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <>
+                        <Text style={styles.acceptLabel}>Accept order</Text>
+                        {offer && <OfferSecondsBadge expiresAt={offer.expiresAt} />}
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity
+                  onPress={handleDeclineOrder}
+                  disabled={acting}
+                  style={styles.declineRow}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.declineText}>Decline</Text>
+                </TouchableOpacity>
               </>
             ) : (
               <>
@@ -564,52 +595,24 @@ export default function DashboardMapScreen() {
             contentContainerStyle={styles.listContent}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}
           >
+            {/* How full they are, and what that means. The cap is
+                enforced on the server and was mentioned nowhere in the
+                app, so the only way to learn it existed was to pick an
+                order, read it, tap accept and be refused. */}
+            {atCapacity && (
+              <Text style={styles.capacityNote}>
+                You are carrying {carrying} of {MAX_CONCURRENT_ORDERS}. Finish one
+                to take on more.
+              </Text>
+            )}
+
             {hasActiveWork && (
-              <View style={styles.section}>
-                <SectionHeader title="My active deliveries" />
-                {/* How full they are, and what that means. The cap was
-                    enforced on the server and mentioned nowhere in the
-                    app, so the only way to learn it existed was to pick
-                    an order, read it, tap accept and be refused. */}
-                {atCapacity && (
-                  <Text style={styles.capacityNote}>
-                    You are carrying {carrying} of {MAX_CONCURRENT_ORDERS}. Finish
-                    one to take on more.
-                  </Text>
-                )}
-                {activeAssignments.map((assignment) => (
-                  <TouchableOpacity
-                    key={assignment.assignmentId}
-                    style={styles.activeCard}
-                    onPress={() => openActiveAssignment(assignment)}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.activeCardTitle}>
-                        {assignment.sellerName || `Order #${assignment.orderId.slice(0, 8)}`}
-                      </Text>
-                      {/* The step, not the assignment status. This showed
-                          `status`, which reads ACCEPTED from the moment
-                          the job is taken until it is delivered -- so
-                          every active delivery on this list wore the same
-                          pill however far along it was. */}
-                      <StatusPill status={assignment.logisticalStatus || 'ACCEPTED'} />
-                    </View>
-                    <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} />
-                  </TouchableOpacity>
-                ))}
-                {activeRun.run_id && (
-                  <TouchableOpacity style={styles.activeCard} onPress={openActiveRun}>
-                    <MaterialIcons name="local-shipping" size={20} color={colors.primary} />
-                    <View style={{ flex: 1, marginLeft: 10 }}>
-                      <Text style={styles.activeCardTitle}>Run in progress</Text>
-                      <Text style={styles.activeCardSubtitle}>
-                        {activeRun.market ? `${activeRun.market} · ${activeRun.area}` : activeRun.area}
-                      </Text>
-                    </View>
-                    <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} />
-                  </TouchableOpacity>
-                )}
-              </View>
+              <ActiveWorkCarousel
+                assignments={activeAssignments}
+                run={activeRun.run_id ? activeRun : null}
+                onOpenAssignment={openActiveAssignment}
+                onOpenRun={openActiveRun}
+              />
             )}
 
             {!isOnline ? (
@@ -768,25 +771,12 @@ const styles = StyleSheet.create({
   handle: { backgroundColor: colors.border, width: 40 },
   listContent: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 32 },
   section: { marginBottom: 32 },
-  activeCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    backgroundColor: colors.primaryMuted,
-    borderRadius: radius,
-    padding: 14,
-    marginBottom: 10,
-  },
   capacityNote: {
     ...typography.caption,
     color: colors.textSecondary,
     marginBottom: 10,
     lineHeight: 18,
   },
-  activeCardTitle: { ...typography.bodyBold, color: colors.textPrimary, marginBottom: 6 },
-  activeCardSubtitle: { ...typography.caption, color: colors.textSecondary },
   // One card shape for both kinds of work, so a rider comparing a single
   // order against a run is comparing like with like. What it pays is the
   // biggest thing on it, because that is what the decision turns on.
@@ -886,11 +876,51 @@ const styles = StyleSheet.create({
   previewSheet: { paddingHorizontal: 20, paddingTop: 4 },
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 14 },
   backText: { ...typography.secondary, color: colors.textSecondary },
-  previewHead: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
-  previewShopImage: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.border },
-  previewShopFallback: { alignItems: 'center', justifyContent: 'center' },
+  // The offer card: the fee leads, the route reads as a route, and the
+  // accept button carries its own clock.
+  offerFee: { fontSize: 36, fontWeight: '800', color: colors.textPrimary },
+  offerFeeNote: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  offerFactsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 10 },
+  offerFact: { ...typography.secondary, color: colors.textSecondary },
+  offerRoute: {
+    marginTop: 18,
+    marginBottom: 18,
+    padding: 14,
+    borderRadius: radius,
+    backgroundColor: colors.surface,
+    gap: 4,
+  },
+  offerStop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  offerThumb: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.border },
+  offerThumbEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+  },
+  offerStopLabel: { ...typography.label, fontSize: 10, color: colors.textMuted },
+  offerStopName: { ...typography.bodyBold, color: colors.textPrimary },
+  offerStopMeta: { ...typography.caption, color: colors.textSecondary },
+  // Joins the two stops, aligned with the middle of the 34px thumbs.
+  offerRouteLine: {
+    width: 1,
+    height: 16,
+    marginLeft: 17,
+    backgroundColor: colors.surfaceDim,
+  },
+  acceptButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    height: 54,
+    borderRadius: radius,
+    backgroundColor: colors.primary,
+  },
+  acceptButtonOff: { backgroundColor: colors.surfaceDim },
+  acceptLabel: { ...typography.bodyBold, color: '#fff' },
+  declineRow: { alignItems: 'center', paddingVertical: 14 },
+  declineText: { ...typography.body, color: colors.textSecondary },
   previewTitle: { ...typography.subtitle, color: colors.textPrimary },
-  previewSubtitle: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   previewRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

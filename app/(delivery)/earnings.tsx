@@ -1,7 +1,7 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import BottomSheet, { BottomSheetFlatList, BottomSheetTextInput, BottomSheetView } from '@gorhom/bottom-sheet';
+import BottomSheet, { BottomSheetScrollView, BottomSheetTextInput, BottomSheetView } from '@gorhom/bottom-sheet';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../../components/Button';
@@ -73,6 +73,7 @@ export default function EarningsScreen() {
 
   const [banks, setBanks] = useState<Bank[]>([]);
   const [banksLoading, setBanksLoading] = useState(false);
+  const [bankQuery, setBankQuery] = useState('');
   const [withdrawStep, setWithdrawStep] = useState<WithdrawStep>('bank');
   const [selectedBank, setSelectedBank] = useState<Bank | null>(null);
   const [accountNumber, setAccountNumber] = useState('');
@@ -132,6 +133,9 @@ export default function EarningsScreen() {
     setAccountNumber('');
     setResolvedName(null);
     setAmount('');
+    // Otherwise reopening the sheet shows last time's search still
+    // applied, over a list that looks like it is missing most banks.
+    setBankQuery('');
   };
 
   const openWithdraw = async () => {
@@ -153,6 +157,17 @@ export default function EarningsScreen() {
     sheetRef.current?.close();
     resetWithdrawForm();
   };
+
+  /** Paystack returns 284 banks, alphabetically, so the list opens on
+   *  "5TT MFB" and the rider scrolls past two hundred microfinance banks
+   *  to reach the one they use. Matching anywhere in the name rather
+   *  than only at the start, because "GTBank" is how people look for
+   *  "Guaranty Trust Bank". */
+  const visibleBanks = useMemo(() => {
+    const query = bankQuery.trim().toLowerCase();
+    if (!query) return banks;
+    return banks.filter((bank) => bank.name.toLowerCase().includes(query));
+  }, [banks, bankQuery]);
 
   const pickBank = (bank: Bank) => {
     setSelectedBank(bank);
@@ -375,20 +390,59 @@ export default function EarningsScreen() {
         {withdrawStep === 'bank' ? (
           <BottomSheetView style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>Choose your bank</Text>
+
+            {/* 284 banks, alphabetically. Without this the list opens on
+                "5TT MFB" and finding GTBank is a scroll, not a task. */}
+            <View style={styles.searchRow}>
+              <MaterialIcons name="search" size={18} color={colors.textMuted} />
+              <BottomSheetTextInput
+                value={bankQuery}
+                onChangeText={setBankQuery}
+                placeholder="Search banks"
+                placeholderTextColor={colors.textMuted}
+                style={styles.searchInput}
+                autoCorrect={false}
+                autoCapitalize="none"
+                returnKeyType="search"
+              />
+              {bankQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setBankQuery('')} hitSlop={8}>
+                  <MaterialIcons name="close" size={18} color={colors.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+
             {banksLoading ? (
               <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />
             ) : (
-              <BottomSheetFlatList
-                data={banks}
-                keyExtractor={(item) => item.code}
+              // Not BottomSheetFlatList. Under Reanimated 4 it is an
+              // Animated-wrapped FlatList and it throws on render here;
+              // the ScrollView-based sheets elsewhere in this app are
+              // fine. The list is filtered by the search above, and a
+              // few hundred one-line rows is well within what a
+              // ScrollView handles.
+              <BottomSheetScrollView
+                style={{ flex: 1 }}
                 contentContainerStyle={{ paddingBottom: 20 }}
-                renderItem={({ item }) => (
-                  <TouchableOpacity style={styles.bankRow} onPress={() => pickBank(item)}>
-                    <Text style={styles.bankName}>{item.name}</Text>
-                    <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} />
-                  </TouchableOpacity>
+                keyboardShouldPersistTaps="handled"
+              >
+                {visibleBanks.length === 0 ? (
+                  <Text style={styles.bankEmpty}>
+                    No bank matches “{bankQuery.trim()}”.
+                  </Text>
+                ) : (
+                  visibleBanks.map((bank) => (
+                    <TouchableOpacity
+                      key={bank.code}
+                      style={styles.bankRow}
+                      onPress={() => pickBank(bank)}
+                    >
+                      <Text style={styles.bankName}>{bank.name}</Text>
+                      <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  ))
                 )}
-              />
+              </BottomSheetScrollView>
             )}
           </BottomSheetView>
         ) : (
@@ -577,6 +631,25 @@ const styles = StyleSheet.create({
   txDebit: { color: colors.textPrimary },
   sheetHeader: { flex: 1, paddingHorizontal: 20, paddingTop: 8 },
   sheetTitle: { ...typography.subtitle, color: colors.textPrimary, marginBottom: 12 },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    height: 44,
+    paddingHorizontal: 12,
+    borderRadius: radius,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 8,
+  },
+  searchInput: { flex: 1, ...typography.body, color: colors.textPrimary, padding: 0 },
+  bankEmpty: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    paddingVertical: 20,
+    textAlign: 'center',
+  },
   bankRow: {
     flexDirection: 'row',
     alignItems: 'center',
