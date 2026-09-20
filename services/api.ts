@@ -3,6 +3,7 @@ import {
   AvailableRun,
   Bank,
   DeliveryFailureReason,
+  DeliveryJobPage,
   DeliveryPartner,
   Location,
   LoginResponse,
@@ -397,6 +398,41 @@ class ApiService {
       console.error('rejectOrder failed:', error);
       throw error;
     }
+  }
+
+  /** Every delivery this rider has taken, newest first.
+   *
+   * `status` omitted means everything: a rider opening their jobs
+   * screen wants their history, not a default slice of it. */
+  async getJobHistory(
+    status?: 'active' | 'completed',
+    page = 1
+  ): Promise<DeliveryJobPage> {
+    const params = new URLSearchParams({ page: String(page), per_page: '20' });
+    if (status) params.set('status', status);
+
+    const response = await fetch(
+      `${API_BASE_URL}/assignments/history?${params.toString()}`,
+      { headers: this.authHeaders() }
+    );
+    if (!response.ok) {
+      throw new Error(`Could not load your jobs (${response.status})`);
+    }
+    const data = await response.json();
+    return {
+      jobs: (data.jobs || []).map((raw: any) => ({
+        assignmentId: raw.assignment_id,
+        orderId: raw.order_id,
+        orderNumber: raw.order_number ?? null,
+        assignedAt: raw.assigned_at ?? null,
+        logisticalStatus: raw.logistical_status ?? null,
+        sellerName: raw.seller_name ?? null,
+        sellerImage: raw.seller_image ?? null,
+        dropoffAddress: raw.dropoff_address ?? null,
+        earnings: raw.earnings ?? null,
+      })),
+      pagination: normalizePagination(data.pagination),
+    };
   }
 
   async getActiveAssignments(): Promise<Assignment[]> {
