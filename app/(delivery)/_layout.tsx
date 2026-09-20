@@ -78,6 +78,11 @@ export default function DeliveryLayout() {
         }}
       />
 
+      {/* Reached from Profile rather than given a fifth tab. Four is
+          already the width of the bar, and a rider looks up what they
+          delivered occasionally -- not as one of the things they do. */}
+      <Tabs.Screen name="jobs" options={{ href: null }} />
+
       {/* Steps inside a task, not places. Reachable by push, absent from
           the bar -- a rider scanning a customer's code should not be one
           mis-tap from the earnings screen. */}

@@ -303,3 +303,28 @@ export interface OrderOffer {
   expiresAt: string;
   seconds: number;
 }
+
+/** One delivery a rider has taken, for the jobs screen.
+ *
+ *  Separate from Assignment: that is a delivery in progress with
+ *  everything needed to work it (coordinates, phone numbers, the
+ *  manifest). This is the record of one, and a list of two hundred of
+ *  them has no business carrying any of that. */
+export interface DeliveryJob {
+  assignmentId: string;
+  orderId: string;
+  orderNumber?: string | null;
+  assignedAt?: string | null;
+  logisticalStatus?: string | null;
+  sellerName?: string | null;
+  sellerImage?: string | null;
+  dropoffAddress?: string | null;
+  /** What this job paid, read server-side through the same function the
+   *  payout uses -- so the history cannot disagree with the wallet. */
+  earnings?: number | null;
+}
+
+export interface DeliveryJobPage {
+  jobs: DeliveryJob[];
+  pagination: Pagination;
+}

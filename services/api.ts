@@ -3,6 +3,7 @@ import {
   AvailableRun,
   Bank,
   DeliveryFailureReason,
+  DeliveryJobPage,
   DeliveryPartner,
   Location,
   LoginResponse,
@@ -399,6 +400,41 @@ class ApiService {
     }
   }
 
+  /** Every delivery this rider has taken, newest first.
+   *
+   * `status` omitted means everything: a rider opening their jobs
+   * screen wants their history, not a default slice of it. */
+  async getJobHistory(
+    status?: 'active' | 'completed',
+    page = 1
+  ): Promise<DeliveryJobPage> {
+    const params = new URLSearchParams({ page: String(page), per_page: '20' });
+    if (status) params.set('status', status);
+
+    const response = await fetch(
+      `${API_BASE_URL}/assignments/history?${params.toString()}`,
+      { headers: this.authHeaders() }
+    );
+    if (!response.ok) {
+      throw new Error(`Could not load your jobs (${response.status})`);
+    }
+    const data = await response.json();
+    return {
+      jobs: (data.jobs || []).map((raw: any) => ({
+        assignmentId: raw.assignment_id,
+        orderId: raw.order_id,
+        orderNumber: raw.order_number ?? null,
+        assignedAt: raw.assigned_at ?? null,
+        logisticalStatus: raw.logistical_status ?? null,
+        sellerName: raw.seller_name ?? null,
+        sellerImage: raw.seller_image ?? null,
+        dropoffAddress: raw.dropoff_address ?? null,
+        earnings: raw.earnings ?? null,
+      })),
+      pagination: normalizePagination(data.pagination),
+    };
+  }
+
   async getActiveAssignments(): Promise<Assignment[]> {
     try {
       const response = await fetch(`${API_BASE_URL}/assignments/active`, {
@@ -487,7 +523,20 @@ class ApiService {
   // above (buyers choose one or the other at checkout; see
   // REFACTOR_NOTES.md) -- both are live and neither is going away.
 
-  async getAvailableRuns(searchRadius = 5000): Promise<AvailableRun[]> {
+  /** 15km, not the backend's 5km default.
+   *
+   * A run's distance is measured from its *area centroid*, not from any
+   * real pickup -- get_available_runs says so in as many words. So the
+   * number being compared against is already coarse: a run collecting
+   * two streets from the rider can measure six kilometres away because
+   * that is where the middle of the area happens to be.
+   *
+   * Ibadan is about twenty kilometres across, and a rider sitting in
+   * Akobo could not see a run whose area centroid was the University --
+   * a trip they would happily take. Single orders keep the tighter
+   * default, because those measure from the actual shop.
+   */
+  async getAvailableRuns(searchRadius = 15000): Promise<AvailableRun[]> {
     try {
       const response = await fetch(
         `${API_BASE_URL}/runs/available?search_radius=${searchRadius}`,

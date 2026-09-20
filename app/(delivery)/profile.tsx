@@ -25,6 +25,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -237,6 +238,25 @@ export default function ProfileScreen() {
 
           {notice && <Text style={styles.notice}>{notice}</Text>}
 
+          {/* The record of what they have done, next to who they are.
+              Earnings shows the money and never says which job it came
+              from; this is the other half of that answer. */}
+          <TouchableOpacity
+            style={styles.navRow}
+            onPress={() => router.push('/(delivery)/jobs')}
+            accessibilityRole="button"
+            accessibilityLabel="See your past jobs"
+          >
+            <MaterialIcons name="receipt-long" size={20} color={colors.textSecondary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.navRowTitle}>Your jobs</Text>
+              <Text style={styles.navRowMeta}>
+                Every delivery you have taken, and what it paid
+              </Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} />
+          </TouchableOpacity>
+
           <SectionHeader title="Your details" />
 
           <Text style={styles.label}>NAME</Text>
@@ -388,6 +408,19 @@ const styles = StyleSheet.create({
 
   save: { marginTop: spacing.md },
 
+  navRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: radius,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.md,
+  },
+  navRowTitle: { ...typography.bodyBold, color: colors.textPrimary },
+  navRowMeta: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
   readOnlyRow: {
     marginTop: spacing.section,
     paddingVertical: spacing.sm,
