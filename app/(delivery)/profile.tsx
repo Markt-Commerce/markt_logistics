@@ -1,47 +1,48 @@
 /**
- * The rider's own page: their photo, their details, and the way out.
+ * Who the rider is, and everything about themselves they can reach.
  *
- * There was no settings screen at all. Signing out lived in a floating
- * avatar menu with no label, riders could not change their own name, and
- * they could not add a photo because delivery_users had no column for one
- * -- buyers and sellers have had `profile_picture` on User since the
- * beginning, and the one person who turns up at a stranger's door was the
- * one with no face in the app. See markt_python's rider profile work.
+ * This was a form. A name field and a vehicle picker sat permanently
+ * open below the avatar, so the screen's whole shape said "fill this
+ * in" -- while the things a rider actually opens it for (their jobs,
+ * their earnings, the way out) were scattered around the edges of it
+ * or, in the case of their work, nowhere at all.
+ *
+ * Same structure as markt_mobile's profile now: an identity block, then
+ * named groups of rows. Editing moved to its own screen, which is what
+ * makes the rest of it readable as a list.
+ *
+ * The photo stays here. It is part of who you are rather than a setting,
+ * and it is the one thing on this screen a buyer at a gate also sees.
  */
 
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import Button from '../../components/Button';
-import SectionHeader from '../../components/SectionHeader';
-import { colors, radius, spacing, typography } from '../../components/theme';
+import { SettingsRow, SettingsSection } from '../../components/SettingsList';
+import { colors, spacing, typography } from '../../components/theme';
 import { useAuth } from '../../contexts/auth';
 import apiService from '../../services/api';
 import { DeliveryPartner } from '../../types';
 
-const VEHICLES: { value: string; label: string; icon: keyof typeof MaterialIcons.glyphMap }[] = [
-  { value: 'BIKE', label: 'Bike', icon: 'two-wheeler' },
-  { value: 'CAR', label: 'Car', icon: 'directions-car' },
-  { value: 'VAN', label: 'Van', icon: 'local-shipping' },
-];
+const VEHICLE_LABEL: Record<string, string> = {
+  BIKE: 'Bike',
+  CAR: 'Car',
+  VAN: 'Van',
+};
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -50,10 +51,6 @@ export default function ProfileScreen() {
   const [partner, setPartner] = useState<DeliveryPartner | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
-  const [name, setName] = useState('');
-  const [vehicle, setVehicle] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   // The photo they just chose, shown while it uploads. Without it the
   // avatar sat on the old picture (or the initial) through the whole
@@ -68,10 +65,7 @@ export default function ProfileScreen() {
 
   const load = useCallback(async () => {
     try {
-      const me = await apiService.getCurrentPartner();
-      setPartner(me);
-      setName(me.name ?? '');
-      setVehicle(me.vehicleType ?? null);
+      setPartner(await apiService.getCurrentPartner());
     } catch (error) {
       console.error('Could not load profile:', error);
     } finally {
@@ -80,35 +74,14 @@ export default function ProfileScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    // The rule cannot see past the await: load() suspends on its first
-    // statement, so nothing is set synchronously and there is no cascade.
-    // Same shape as earnings.tsx, which the analyser happens not to trace.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
-  }, [load]);
-
-  const dirty =
-    !!partner &&
-    (name.trim() !== (partner.name ?? '') || vehicle !== (partner.vehicleType ?? null));
-
-  const save = async () => {
-    if (!dirty) return;
-    setSaving(true);
-    setNotice(null);
-    try {
-      const updated = await apiService.updatePartner({
-        name: name.trim(),
-        vehicleType: vehicle ?? undefined,
-      });
-      setPartner(updated);
-      setNotice('Saved.');
-    } catch (error: any) {
-      setNotice(error?.message || 'Could not save that. Try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
+  // On focus rather than on mount: editing happens on another screen
+  // now, and coming back from it with the old name still on display
+  // would look like the save had not worked.
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load])
+  );
 
   const pickPhoto = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -120,9 +93,7 @@ export default function ProfileScreen() {
     const picked = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
-      // Square, because it is shown as a circle everywhere it appears --
-      // letting someone crop a portrait and then cutting the top off it is
-      // a worse experience than asking for the square up front.
+      // Square, because it is shown as a circle everywhere it appears.
       aspect: [1, 1],
       quality: 0.7,
     });
@@ -134,13 +105,10 @@ export default function ProfileScreen() {
     try {
       const url = await apiService.uploadProfilePhoto(picked.assets[0].uri);
       setPhotoBroken(false);
-      setPartner((current) =>
-        current ? { ...current, profile_picture: url } : current
-      );
+      setPartner((current) => (current ? { ...current, profile_picture: url } : current));
     } catch (error: any) {
       // Drop the preview on failure. Leaving it up shows a picture that
-      // is not saved anywhere, and the next screen they open will
-      // silently disagree with this one.
+      // is not saved anywhere.
       setPendingPhoto(null);
       setNotice(error?.message || 'Could not upload that photo.');
     } finally {
@@ -171,181 +139,136 @@ export default function ProfileScreen() {
   }
 
   const initial = (partner?.name || '?').charAt(0).toUpperCase();
-  // The picked file wins while it is in flight, then the saved URL takes
-  // over -- so the avatar never flickers back to the old photo in the
-  // gap between the upload finishing and the profile reloading.
   const photo = pendingPhoto ?? (photoBroken ? null : partner?.profile_picture) ?? null;
+  const vehicle = partner?.vehicleType ? VEHICLE_LABEL[partner.vehicleType] : null;
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              void load();
+            }}
+            tintColor={colors.primary}
+          />
+        }
       >
-        <ScrollView
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => {
-                setRefreshing(true);
-                load();
-              }}
-              tintColor={colors.primary}
-            />
-          }
-        >
-          <View style={styles.identity}>
-            <Pressable
-              onPress={pickPhoto}
-              disabled={uploading}
-              style={styles.avatarWrap}
-              accessibilityRole="button"
-              accessibilityLabel="Change your photo"
-            >
-              {photo ? (
-                <Image
-                  source={{ uri: photo }}
-                  style={[styles.avatar, uploading && styles.avatarUploading]}
-                  onError={() => setPhotoBroken(true)}
-                />
-              ) : (
-                <View style={[styles.avatar, styles.avatarEmpty]}>
-                  <Text style={styles.avatarInitial}>{initial}</Text>
-                </View>
-              )}
-              <View style={styles.avatarBadge}>
-                {uploading ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <MaterialIcons name="photo-camera" size={15} color="#fff" />
-                )}
-              </View>
-            </Pressable>
-
-            <Text style={styles.identityName}>{partner?.name || 'Delivery partner'}</Text>
-            {!!partner?.phone_number && (
-              <Text style={styles.identityMeta}>{partner.phone_number}</Text>
-            )}
-            {partner?.rating != null && (
-              <View style={styles.ratingRow}>
-                <MaterialIcons name="star" size={15} color={colors.primary} />
-                <Text style={styles.ratingText}>{partner.rating.toFixed(1)}</Text>
-              </View>
-            )}
-          </View>
-
-          {notice && <Text style={styles.notice}>{notice}</Text>}
-
-          {/* The record of what they have done, next to who they are.
-              Earnings shows the money and never says which job it came
-              from; this is the other half of that answer. */}
-          <TouchableOpacity
-            style={styles.navRow}
-            onPress={() => router.push('/(delivery)/jobs')}
+        <View style={styles.identity}>
+          <Pressable
+            onPress={pickPhoto}
+            disabled={uploading}
+            style={styles.avatarWrap}
             accessibilityRole="button"
-            accessibilityLabel="See your past jobs"
+            accessibilityLabel="Change your photo"
           >
-            <MaterialIcons name="receipt-long" size={20} color={colors.textSecondary} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.navRowTitle}>Your jobs</Text>
-              <Text style={styles.navRowMeta}>
-                Every delivery you have taken, and what it paid
-              </Text>
+            {photo ? (
+              <Image
+                source={{ uri: photo }}
+                style={[styles.avatar, uploading && styles.avatarUploading]}
+                onError={() => setPhotoBroken(true)}
+              />
+            ) : (
+              <View style={[styles.avatar, styles.avatarEmpty]}>
+                <Text style={styles.avatarInitial}>{initial}</Text>
+              </View>
+            )}
+            <View style={styles.avatarBadge}>
+              {uploading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <MaterialIcons name="photo-camera" size={15} color="#fff" />
+              )}
             </View>
-            <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} />
-          </TouchableOpacity>
+          </Pressable>
 
-          <SectionHeader title="Your details" />
-
-          <Text style={styles.label}>NAME</Text>
-          <TextInput
-            style={styles.input}
-            value={name}
-            onChangeText={setName}
-            placeholder="Your name"
-            placeholderTextColor={colors.textMuted}
-            autoCapitalize="words"
-            maxLength={100}
-          />
-
-          <Text style={[styles.label, { marginTop: spacing.md }]}>VEHICLE</Text>
-          <View style={styles.vehicleRow}>
-            {VEHICLES.map((option) => {
-              const chosen = vehicle === option.value;
-              return (
-                <Pressable
-                  key={option.value}
-                  style={[styles.vehicle, chosen && styles.vehicleChosen]}
-                  onPress={() => setVehicle(option.value)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: chosen }}
-                  accessibilityLabel={option.label}
-                >
-                  <MaterialIcons
-                    name={option.icon}
-                    size={20}
-                    color={chosen ? colors.primary : colors.textSecondary}
-                  />
-                  <Text style={[styles.vehicleText, chosen && styles.vehicleTextChosen]}>
-                    {option.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <Button
-            label="Save changes"
-            onPress={save}
-            loading={saving}
-            disabled={!dirty}
-            style={styles.save}
-          />
-
-          {/* The email is shown but not editable here: it is where the
-              sign-in code goes, so changing it is a way to lose an account
-              rather than a setting. */}
-          {!!partner?.email && (
-            <View style={styles.readOnlyRow}>
-              <Text style={styles.readOnlyLabel}>Sign-in email</Text>
-              <Text style={styles.readOnlyValue} numberOfLines={1}>
-                {partner.email}
-              </Text>
-            </View>
+          <Text style={styles.identityName}>{partner?.name || 'Delivery partner'}</Text>
+          {!!partner?.phone_number && (
+            <Text style={styles.identityMeta}>{partner.phone_number}</Text>
           )}
 
-          <Button
-            label="Sign out"
-            onPress={confirmSignOut}
-            variant="danger"
-            style={styles.signOut}
+          {/* Rating and vehicle read as facts about the rider, so they
+              sit with the name rather than as rows further down. */}
+          <View style={styles.chips}>
+            {partner?.rating != null && (
+              <View style={styles.chip}>
+                <MaterialIcons name="star" size={14} color={colors.primary} />
+                <Text style={styles.chipText}>{partner.rating.toFixed(1)}</Text>
+              </View>
+            )}
+            {!!vehicle && (
+              <View style={styles.chip}>
+                <MaterialIcons name="two-wheeler" size={14} color={colors.textSecondary} />
+                <Text style={styles.chipText}>{vehicle}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {!!notice && <Text style={styles.notice}>{notice}</Text>}
+
+        <SettingsSection title="Your work">
+          <SettingsRow
+            icon="receipt-long"
+            title="Your jobs"
+            subtitle="Every delivery you have taken, and what it paid"
+            onPress={() => router.push('/(delivery)/jobs')}
           />
-        </ScrollView>
-      </KeyboardAvoidingView>
+          <SettingsRow
+            icon="account-balance-wallet"
+            title="Earnings"
+            subtitle="Your balance, withdrawals and activity"
+            onPress={() => router.push('/(delivery)/earnings')}
+            last
+          />
+        </SettingsSection>
+
+        <SettingsSection title="Account">
+          <SettingsRow
+            icon="person"
+            title="Your details"
+            subtitle="Name and vehicle"
+            onPress={() => router.push('/(delivery)/edit-profile')}
+          />
+          {/* Shown, not editable: it is where the sign-in code goes, so
+              changing it is a way to lose an account rather than a
+              setting. No chevron, because nothing opens. */}
+          <SettingsRow
+            icon="mail-outline"
+            title="Sign-in email"
+            value={partner?.email || 'Not set'}
+            last
+          />
+        </SettingsSection>
+
+        <SettingsSection title="Session">
+          <SettingsRow
+            icon="logout"
+            title="Sign out"
+            onPress={confirmSignOut}
+            destructive
+            last
+          />
+        </SettingsSection>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
-const AVATAR = 92;
-
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { paddingHorizontal: 20, paddingBottom: 40 },
-
-  identity: { alignItems: 'center', paddingVertical: spacing.md },
-  avatarWrap: { width: AVATAR, height: AVATAR },
-  avatar: { width: AVATAR, height: AVATAR, borderRadius: AVATAR / 2 },
+  content: { paddingBottom: 40 },
+  identity: { alignItems: 'center', paddingTop: 12, paddingBottom: spacing.md },
+  avatarWrap: { marginBottom: 12 },
+  avatar: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.primaryMuted },
   // Dimmed while the upload is in flight, so the preview reads as "this
   // is going" rather than "this is done".
   avatarUploading: { opacity: 0.55 },
-  avatarEmpty: {
-    backgroundColor: colors.primaryMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitial: { ...typography.title, fontSize: 34, color: colors.primary },
+  avatarEmpty: { alignItems: 'center', justifyContent: 'center' },
+  avatarInitial: { fontSize: 34, fontWeight: '800', color: colors.primary },
   avatarBadge: {
     position: 'absolute',
     right: -2,
@@ -359,76 +282,23 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.background,
   },
-  identityName: {
-    ...typography.title,
-    fontSize: 21,
-    color: colors.textPrimary,
-    marginTop: spacing.sm,
-  },
+  identityName: { ...typography.title, color: colors.textPrimary },
   identityMeta: { ...typography.secondary, color: colors.textSecondary, marginTop: 2 },
-  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
-  ratingText: { ...typography.bodyBold, fontSize: 14, color: colors.textPrimary },
-
-  notice: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    backgroundColor: colors.surface,
-    borderRadius: radius,
-    padding: 10,
-    marginBottom: spacing.sm,
-    lineHeight: 17,
-  },
-
-  label: { ...typography.label, color: colors.textMuted, marginBottom: spacing.base },
-  input: {
-    height: 52,
-    borderRadius: radius,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.sm,
-    ...typography.body,
-    color: colors.textPrimary,
-  },
-
-  vehicleRow: { flexDirection: 'row', gap: spacing.base },
-  vehicle: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: spacing.sm,
-    borderRadius: radius,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  vehicleChosen: { borderColor: colors.primary, backgroundColor: colors.primaryMuted },
-  vehicleText: { ...typography.caption, color: colors.textSecondary },
-  vehicleTextChosen: { color: colors.primary, fontWeight: '700' },
-
-  save: { marginTop: spacing.md },
-
-  navRow: {
+  chips: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderRadius: radius,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.md,
+    gap: 5,
+    paddingHorizontal: 12,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.surface,
   },
-  navRowTitle: { ...typography.bodyBold, color: colors.textPrimary },
-  navRowMeta: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  readOnlyRow: {
-    marginTop: spacing.section,
-    paddingVertical: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
+  chipText: { ...typography.caption, color: colors.textPrimary, fontWeight: '700' },
+  notice: {
+    ...typography.caption,
+    color: colors.error,
+    paddingHorizontal: spacing.screenX,
+    marginBottom: 8,
   },
-  readOnlyLabel: { ...typography.caption, color: colors.textMuted },
-  readOnlyValue: { ...typography.body, color: colors.textSecondary, marginTop: 2 },
-
-  signOut: { marginTop: spacing.section },
 });
