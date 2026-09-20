@@ -117,6 +117,15 @@ export interface Order {
 // Driving the screen off `status` meant every reload re-offered the step
 // the rider had just finished, and the second tap was rejected by the
 // backend's transition check as an error they could do nothing about.
+/** One line of what the rider is collecting. */
+export interface ParcelLine {
+  name: string;
+  quantity: number;
+  /** "Colour", "Size" -- the axis the buyer chose on, which is exactly
+   *  the mix-up a count can never catch. */
+  variant?: string | null;
+}
+
 export interface Assignment {
   assignmentId: string;
   orderId: string;
@@ -124,6 +133,12 @@ export interface Assignment {
   pickup: { lat: number; lng: number };
   dropoff: { lat: number; lng: number };
   status: string;
+  /** What is actually in the parcel, line by line.
+   *
+   *  A count cannot be checked against a bag. A rider standing at a
+   *  stall needs to know they are being handed an Ankara wrapper and a
+   *  lace blouse, not "3 items". */
+  items?: ParcelLine[];
   /** Which step they are on. Null on a freshly accepted delivery, which
    *  is what makes "Arrived at pickup" the right first action exactly
    *  once. */
@@ -266,6 +281,11 @@ export interface DeliveryStop {
   /** The shop's picture, so a rider is looking for a storefront rather
    *  than reading a name off a list. Pickup stops only. */
   image?: string | null;
+  /** This action cannot be undone, so it is confirmed by a deliberate
+   *  swipe rather than a tap. Set only on the proof-of-delivery step:
+   *  it releases the parcel and the rider's pay, there is no transition
+   *  back out of it, and it is done one-handed at somebody's gate. */
+  confirmBySlide?: boolean;
   /** What to do here, in one line, on the one stop that is actionable.
    *  A rider new to the app was shown a button labelled with a state
    *  ("Arrived at pickup") and nothing about what it commits them to or

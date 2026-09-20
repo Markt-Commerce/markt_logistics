@@ -88,6 +88,11 @@ export default function ActiveDeliveryScreen() {
   let stops: DeliveryStop[] = [];
   let headerTitle = '';
   let headerSubtitle: string | undefined;
+  // Only single orders carry a manifest: a run's stops are per-seller
+  // and its parcels belong to different buyers, so one combined list
+  // under one order number would be actively misleading.
+  let reference: string | null | undefined;
+  let parcel: Assignment['items'];
   let screenActions: { refreshing: boolean; onRefresh: () => void; dangerActionLabel?: string; onDangerAction?: () => void } = {
     refreshing,
     onRefresh: handleRefresh,
@@ -105,7 +110,10 @@ export default function ActiveDeliveryScreen() {
           params: { mode: 'order', assignmentId: assignment.assignmentId, orderId: assignment.orderId },
         }),
     });
-    headerTitle = `Order #${assignment.orderId.slice(0, 8)}`;
+    headerTitle = assignment.sellerName || `Order #${assignment.orderId.slice(0, 8)}`;
+    headerSubtitle = assignment.pickupAddress ?? undefined;
+    reference = assignment.orderNumber;
+    parcel = assignment.items;
   } else if (kind === 'run' && run?.run_id) {
     const runId = run.run_id;
     stops = runToStops(run, {
@@ -162,7 +170,14 @@ export default function ActiveDeliveryScreen() {
   return (
     <View style={styles.container}>
       <LiveMap stops={stops} />
-      <ActiveDeliverySheet headerTitle={headerTitle} headerSubtitle={headerSubtitle} stops={stops} screenActions={screenActions} />
+      <ActiveDeliverySheet
+        headerTitle={headerTitle}
+        headerSubtitle={headerSubtitle}
+        stops={stops}
+        screenActions={screenActions}
+        reference={reference}
+        parcel={parcel}
+      />
     </View>
   );
 }

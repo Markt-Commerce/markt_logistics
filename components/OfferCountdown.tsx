@@ -121,4 +121,42 @@ const styles = StyleSheet.create({
   },
   fill: { height: 6, borderRadius: radius, backgroundColor: colors.primary },
   fillUrgent: { backgroundColor: colors.error },
+  badge: {
+    minWidth: 28,
+    height: 28,
+    borderRadius: 14,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
+  badgeText: { ...typography.caption, color: '#fff', fontWeight: '800' },
 });
+
+/**
+ * Just the number, for sitting inside the Accept button.
+ *
+ * Its own component rather than a callback out of OfferCountdown so the
+ * tick re-renders a two-character badge instead of the whole sheet four
+ * times a second while a rider is reading it.
+ */
+export function OfferSecondsBadge({ expiresAt }: { expiresAt: string }) {
+  const [left, setLeft] = useState(() => secondsLeft(expiresAt));
+  const [tracked, setTracked] = useState(expiresAt);
+
+  if (tracked !== expiresAt) {
+    setTracked(expiresAt);
+    setLeft(secondsLeft(expiresAt));
+  }
+
+  useEffect(() => {
+    const id = setInterval(() => setLeft(secondsLeft(expiresAt)), 250);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+
+  return (
+    <View style={styles.badge}>
+      <Text style={styles.badgeText}>{left}</Text>
+    </View>
+  );
+}
