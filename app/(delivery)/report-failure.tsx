@@ -53,12 +53,14 @@ export default function ReportFailureScreen() {
     setSubmitting(true);
     try {
       await apiService.reportDeliveryFailure(runId, orderId, selected, notes || undefined);
-      Alert.alert('Reported', 'The failed delivery has been logged.', [
-        {
-          text: 'OK',
-          onPress: () => router.replace({ pathname: '/(delivery)/active-delivery', params: { kind: 'run', id: runId } }),
-        },
-      ]);
+      // Leave first, then say so. Navigating from inside the alert's
+      // OK handler means not navigating at all when the alert is
+      // dismissed another way -- an Android alert tapped outside of
+      // fires nothing -- which left the rider on a form they had
+      // already submitted, free to submit it again. Same fix as
+      // pod-scan.
+      router.replace({ pathname: '/(delivery)/active-delivery', params: { kind: 'run', id: runId } });
+      Alert.alert('Reported', 'The failed delivery has been logged.');
     } catch (error) {
       console.error('Error reporting failure:', error);
       Alert.alert('Could not report this', 'Please try again.');

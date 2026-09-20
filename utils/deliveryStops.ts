@@ -196,6 +196,8 @@ export function runToStops(run: RunDetail, ctx: RunStopsContext): DeliveryStop[]
           ? { lat: addressCoords.lat, lng: addressCoords.lng }
           : undefined,
       status: order.pod_status,
+      phone: order.buyer_phone,
+      parcel: order.items,
       primaryActionLabel,
       onPrimaryAction,
       confirmBySlide: true,
