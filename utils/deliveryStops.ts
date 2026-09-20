@@ -3,6 +3,11 @@ import { Assignment, AvailableRun, DeliveryStop, Order, RunDetail } from '../typ
 interface AssignmentStopsContext {
   onStatusUpdate: (status: string) => Promise<void>;
   onGoToPodConfirm: () => void;
+  /** Nobody home, wrong address, refused. A run's drops have had this
+   *  since 10.7; a single order had no way to say it at all, so a
+   *  rider's only options were to claim a delivery that never happened
+   *  or to walk away and leave it open. */
+  onGoToReportFailure: () => void;
 }
 
 /**
@@ -54,6 +59,17 @@ export function assignmentToStops(assignment: Assignment, ctx: AssignmentStopsCo
   let dropoffActionLabel: string | undefined;
   let dropoffAction: (() => Promise<void>) | undefined;
   let dropoffHint: string | undefined;
+  // Offered from the moment the rider has the parcel and is dealing
+  // with the buyer -- which is the whole window in which a delivery
+  // can fail. Not before pickup: nothing has gone wrong with a
+  // delivery that has not started, and "I can't collect this" is a
+  // different problem with a different answer.
+  let dropoffSecondaryLabel: string | undefined;
+  let dropoffSecondary: (() => void) | undefined;
+  if (step === 'PICKED_UP' || step === 'EN_ROUTE_TO_DROPOFF' || step === 'DELIVERED_PENDING_QR') {
+    dropoffSecondaryLabel = 'Report issue';
+    dropoffSecondary = ctx.onGoToReportFailure;
+  }
   if (step === 'PICKED_UP') {
     dropoffActionLabel = 'Slide when you set off';
     dropoffAction = () => ctx.onStatusUpdate('EN_ROUTE_TO_DROPOFF');
@@ -109,6 +125,8 @@ export function assignmentToStops(assignment: Assignment, ctx: AssignmentStopsCo
       primaryActionLabel: dropoffActionLabel,
       onPrimaryAction: dropoffAction,
       confirmBySlide: true,
+      secondaryActionLabel: dropoffSecondaryLabel,
+      onSecondaryAction: dropoffSecondary,
       hint: dropoffHint,
     },
   ];
