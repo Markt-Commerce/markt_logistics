@@ -1,14 +1,13 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
-import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
-import React, { useContext, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Image, Linking, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { DeliveryStop } from '../types';
 import Button from './Button';
 import SectionHeader from './SectionHeader';
 import SlideToConfirm from './SlideToConfirm';
 import StatusPill from './StatusPill';
-import { colors, radius, shadow, typography } from './theme';
+import { colors, radius, shadow, TAB_BAR_HEIGHT, typography } from './theme';
 
 /** The statuses that mean a stop is behind the rider.
  *
@@ -78,12 +77,6 @@ export default function ActiveDeliverySheet({
   const nextStop = stops.find((s) => s.onPrimaryAction);
   const doneCount = stops.filter((s) => isDone(s.status)).length;
 
-  // The tab bar is drawn over the sheet, so without this the last stop
-  // sits underneath it -- reachable only by scrolling past the end of
-  // the content. Read from context rather than useBottomTabBarHeight()
-  // so the sheet still renders if it is ever used outside the tabs.
-  const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
-
   const runStopAction = async (stop: DeliveryStop) => {
     if (!stop.onPrimaryAction || busyStopId) return;
     setBusyStopId(stop.id);
@@ -117,7 +110,7 @@ export default function ActiveDeliverySheet({
       <BottomSheetScrollView
         style={{ flex: 1 }}
         stickyHeaderIndices={[0]}
-        contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + 24 }]}
+        contentContainerStyle={[styles.listContent, { paddingBottom: TAB_BAR_HEIGHT + 24 }]}
         refreshControl={
           screenActions?.onRefresh ? (
             <RefreshControl

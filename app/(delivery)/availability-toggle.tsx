@@ -1,9 +1,8 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
-import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../../components/Button';
@@ -11,7 +10,7 @@ import ActiveWorkCarousel from '../../components/ActiveWorkCarousel';
 import LiveMap from '../../components/LiveMap';
 import OfferCountdown, { OfferSecondsBadge } from '../../components/OfferCountdown';
 import SectionEmpty from '../../components/SectionEmpty';
-import { colors, radius, shadow, spacing, typography } from '../../components/theme';
+import { colors, radius, shadow, spacing, TAB_BAR_HEIGHT, typography } from '../../components/theme';
 import { useReportLocation } from '../../hooks/useReportLocation';
 import apiService, { OrderTakenError } from '../../services/api';
 import {
@@ -97,7 +96,6 @@ export default function DashboardMapScreen() {
   const [tab, setTab] = useState<'orders' | 'runs'>('orders');
   const [acting, setActing] = useState(false);
   const sheetRef = useRef<BottomSheet>(null);
-  const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const snapPoints = useMemo(() => ['20%', '52%', '88%'], []);
 
   // How full the rider is. A delivery still counts while it is being
@@ -445,7 +443,7 @@ export default function DashboardMapScreen() {
             style={{ flex: 1 }}
             contentContainerStyle={[
               styles.previewSheet,
-              { paddingBottom: tabBarHeight + 24 },
+              { paddingBottom: TAB_BAR_HEIGHT + 24 },
             ]}
             keyboardShouldPersistTaps="handled"
           >
@@ -618,7 +616,7 @@ export default function DashboardMapScreen() {
               styles.listContent,
               // The tab bar is drawn over the sheet, so without this the
               // last job in the list sits underneath it.
-              { paddingBottom: tabBarHeight + 24 },
+              { paddingBottom: TAB_BAR_HEIGHT + 24 },
             ]}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}
           >

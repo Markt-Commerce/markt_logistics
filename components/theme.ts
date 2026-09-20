@@ -47,6 +47,22 @@ export const spacing = {
 // consistent small radius rather than a scale.
 export const radius = 8;
 
+/** The rider tab bar's full on-screen height.
+ *
+ * Lives here because two things need to agree on it: the bar itself, in
+ * app/(delivery)/_layout.tsx, and every bottom sheet that has to leave
+ * room for it -- the bar is drawn over the sheets, so without the room
+ * the last row of a list sits underneath it.
+ *
+ * It used to be read from @react-navigation's BottomTabBarHeightContext,
+ * which is exactly right and no longer importable: expo-router dropped
+ * react-navigation compatibility in SDK 56 and the bundler refuses the
+ * import outright. A constant is honest as long as it is the same one
+ * the bar is built from, which is why the layout reads it from here
+ * rather than repeating the number.
+ */
+export const TAB_BAR_HEIGHT = 88;
+
 // The soft "Level 2" floating shadow, reserved for overlay/floating
 // elements (bottom sheet, cards that need to lift off the page) -- the
 // exact value from UI_UX_DESIGN_GUIDE.md. `boxShadow` (not the legacy

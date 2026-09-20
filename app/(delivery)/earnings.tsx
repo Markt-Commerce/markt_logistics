@@ -1,15 +1,14 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import BottomSheet, { BottomSheetScrollView, BottomSheetTextInput, BottomSheetView } from '@gorhom/bottom-sheet';
-import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../../components/Button';
 import SectionEmpty from '../../components/SectionEmpty';
 import EarningsSummary from '../../components/EarningsSummary';
 import StatusPill from '../../components/StatusPill';
-import { colors, radius, shadow, spacing, tones, typography } from '../../components/theme';
+import { colors, radius, shadow, spacing, TAB_BAR_HEIGHT, tones, typography } from '../../components/theme';
 import apiService from '../../services/api';
 import { Bank, WalletTransaction, Withdrawal } from '../../types';
 
@@ -101,9 +100,6 @@ export default function EarningsScreen() {
   const [banks, setBanks] = useState<Bank[]>([]);
   const [banksLoading, setBanksLoading] = useState(false);
   const [bankQuery, setBankQuery] = useState('');
-  // The tab bar is drawn over the sheet. Read from context rather than
-  // useBottomTabBarHeight() so this still renders outside the tabs.
-  const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const [withdrawStep, setWithdrawStep] = useState<WithdrawStep>('bank');
   const [selectedBank, setSelectedBank] = useState<Bank | null>(null);
   const [accountNumber, setAccountNumber] = useState('');
@@ -461,7 +457,7 @@ export default function EarningsScreen() {
           <BottomSheetScrollView
             style={{ flex: 1 }}
             stickyHeaderIndices={[0]}
-            contentContainerStyle={{ paddingBottom: tabBarHeight + 24 }}
+            contentContainerStyle={{ paddingBottom: TAB_BAR_HEIGHT + 24 }}
             keyboardShouldPersistTaps="handled"
           >
             <View style={styles.sheetStickyHead}>

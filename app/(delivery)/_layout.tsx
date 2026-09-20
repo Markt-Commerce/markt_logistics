@@ -18,7 +18,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
 
-import { colors, typography } from '../../components/theme';
+import { colors, TAB_BAR_HEIGHT, typography } from '../../components/theme';
 
 export default function DeliveryLayout() {
   return (
@@ -31,7 +31,7 @@ export default function DeliveryLayout() {
           backgroundColor: colors.background,
           borderTopColor: colors.borderLight,
           borderTopWidth: 1,
-          height: 88,
+          height: TAB_BAR_HEIGHT,
           paddingTop: 8,
         },
         tabBarLabelStyle: {
