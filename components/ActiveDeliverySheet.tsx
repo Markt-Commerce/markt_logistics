@@ -322,11 +322,18 @@ export default function ActiveDeliverySheet({
                     with about forty pixels to cross, which is a tap
                     with extra steps. So it goes on its own line and the
                     secondary action sits above it. */}
+                {/* Danger, not outline. Reporting a failed delivery
+                    ends it: the buyer is told, the order comes off the
+                    rider, and what happens next is somebody else's
+                    decision. A neutral grey button sat next to the
+                    slider as though it were the other half of a pair,
+                    when it is the way out. Same red-on-transparent
+                    treatment as Sign out. */}
                 {stop.onSecondaryAction && (
                   <Button
                     label={stop.secondaryActionLabel ?? 'Report issue'}
                     onPress={stop.onSecondaryAction}
-                    variant="outline"
+                    variant="danger"
                   />
                 )}
                 {stop.onPrimaryAction && !isNext && (
