@@ -1,8 +1,9 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import BottomSheet, { BottomSheetScrollView, BottomSheetView } from '@gorhom/bottom-sheet';
-import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../../components/Button';
@@ -96,6 +97,7 @@ export default function DashboardMapScreen() {
   const [tab, setTab] = useState<'orders' | 'runs'>('orders');
   const [acting, setActing] = useState(false);
   const sheetRef = useRef<BottomSheet>(null);
+  const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const snapPoints = useMemo(() => ['20%', '52%', '88%'], []);
 
   // How full the rider is. A delivery still counts while it is being
@@ -206,9 +208,17 @@ export default function DashboardMapScreen() {
     }
   }, [isOnline]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // On focus rather than on mount. Coming back from a delivery -- one
+  // just completed, or a run just worked through -- left this showing
+  // whatever was true when the rider last opened it, so the only way to
+  // see the current state of their own work was to pull to refresh.
+  // Covers the first mount and an isOnline flip too, both of which the
+  // plain mount effect used to handle.
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -344,6 +354,11 @@ export default function DashboardMapScreen() {
     try {
       await apiService.acceptRun(run.run_id);
       closePreview();
+      // The run is the rider's now, so the dashboard behind this has to
+      // know. handleAcceptOrder has always reloaded and this never did,
+      // which is why an accepted run only appeared in "carrying" after
+      // a manual pull-to-refresh.
+      load();
       router.push({ pathname: '/(delivery)/active-delivery', params: { kind: 'run', id: run.run_id } });
     } catch (error) {
       console.error('Error accepting run:', error);
@@ -426,7 +441,14 @@ export default function DashboardMapScreen() {
         backgroundStyle={styles.sheetBackground}
       >
         {selection ? (
-          <BottomSheetView style={styles.previewSheet}>
+          <BottomSheetScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={[
+              styles.previewSheet,
+              { paddingBottom: tabBarHeight + 24 },
+            ]}
+            keyboardShouldPersistTaps="handled"
+          >
             <TouchableOpacity onPress={closePreview} style={styles.backRow}>
               <MaterialIcons name="arrow-back" size={18} color={colors.textSecondary} />
               <Text style={styles.backText}>Back</Text>
@@ -588,11 +610,16 @@ export default function DashboardMapScreen() {
                 </View>
               </>
             )}
-          </BottomSheetView>
+          </BottomSheetScrollView>
         ) : (
           <BottomSheetScrollView
             style={{ flex: 1 }}
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={[
+              styles.listContent,
+              // The tab bar is drawn over the sheet, so without this the
+              // last job in the list sits underneath it.
+              { paddingBottom: tabBarHeight + 24 },
+            ]}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}
           >
             {/* How full they are, and what that means. The cap is
@@ -769,7 +796,7 @@ const styles = StyleSheet.create({
   menuRowText: { ...typography.body, color: colors.textPrimary },
   sheetBackground: { backgroundColor: colors.background, ...shadow },
   handle: { backgroundColor: colors.border, width: 40 },
-  listContent: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 32 },
+  listContent: { paddingHorizontal: 20, paddingTop: 8 },
   section: { marginBottom: 32 },
   capacityNote: {
     ...typography.caption,

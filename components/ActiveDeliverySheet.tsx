@@ -1,6 +1,7 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import BottomSheet, { BottomSheetScrollView, BottomSheetView } from '@gorhom/bottom-sheet';
-import React, { useMemo, useState } from 'react';
+import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
+import React, { useContext, useMemo, useState } from 'react';
 import { Image, Linking, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { DeliveryStop } from '../types';
 import Button from './Button';
@@ -77,6 +78,12 @@ export default function ActiveDeliverySheet({
   const nextStop = stops.find((s) => s.onPrimaryAction);
   const doneCount = stops.filter((s) => isDone(s.status)).length;
 
+  // The tab bar is drawn over the sheet, so without this the last stop
+  // sits underneath it -- reachable only by scrolling past the end of
+  // the content. Read from context rather than useBottomTabBarHeight()
+  // so the sheet still renders if it is ever used outside the tabs.
+  const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
+
   const runStopAction = async (stop: DeliveryStop) => {
     if (!stop.onPrimaryAction || busyStopId) return;
     setBusyStopId(stop.id);
@@ -96,12 +103,31 @@ export default function ActiveDeliverySheet({
       handleIndicatorStyle={styles.handle}
       backgroundStyle={styles.sheetBackground}
     >
-      {/* One BottomSheetView wrapping both. A BottomSheetView and a
-          BottomSheetScrollView as siblings do not lay out against each
-          other -- the summary rendered on top of the list, so the title,
-          the route heading and the first stop all printed over one
-          another. */}
-      <BottomSheetView style={styles.sheetBody}>
+      {/* The scrollable is the sheet's own child, and the summary is a
+          sticky first row inside it.
+
+          It used to be wrapped in a BottomSheetView, which fixed an
+          overlap and quietly broke scrolling: that component's
+          container is `position: absolute` with left/top/right and no
+          bottom, so it is only as tall as its content. A `flex: 1`
+          scrollable inside a box with no bounded height lays out at
+          full content height and never scrolls -- it just overflows and
+          gets clipped by the sheet, which is why the last stop was cut
+          in half and could not be reached. */}
+      <BottomSheetScrollView
+        style={{ flex: 1 }}
+        stickyHeaderIndices={[0]}
+        contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + 24 }]}
+        refreshControl={
+          screenActions?.onRefresh ? (
+            <RefreshControl
+              refreshing={!!screenActions.refreshing}
+              onRefresh={screenActions.onRefresh}
+              tintColor={colors.primary}
+            />
+          ) : undefined
+        }
+      >
       <View style={styles.summary}>
         <Text style={styles.headerTitle}>{headerTitle}</Text>
         {!!headerSubtitle && <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>}
@@ -167,19 +193,6 @@ export default function ActiveDeliverySheet({
         )}
       </View>
 
-      <BottomSheetScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.listContent}
-        refreshControl={
-          screenActions?.onRefresh ? (
-            <RefreshControl
-              refreshing={!!screenActions.refreshing}
-              onRefresh={screenActions.onRefresh}
-              tintColor={colors.primary}
-            />
-          ) : undefined
-        }
-      >
         {/* What this delivery is, in the sheet rather than behind
             another tap. The rider needed the order number to be given
             the right bag and the contents to know it is the right bag,
@@ -337,7 +350,6 @@ export default function ActiveDeliverySheet({
           />
         )}
       </BottomSheetScrollView>
-      </BottomSheetView>
     </BottomSheet>
   );
 }
@@ -351,9 +363,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
     width: 40,
   },
-  sheetBody: { flex: 1 },
   summary: {
-    paddingHorizontal: 20,
+    // Opaque, because it is a sticky row now -- the route would
+    // otherwise scroll visibly underneath it.
+    backgroundColor: colors.background,
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
@@ -394,8 +407,6 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 32,
   },
   stopRow: {
     paddingVertical: 12,
@@ -519,6 +530,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius,
     padding: 14,
+    // The summary above is sticky, so the gap below it belongs to
+    // whatever scrolls under it rather than to the summary itself.
+    marginTop: 16,
     marginBottom: 20,
     gap: 6,
   },
