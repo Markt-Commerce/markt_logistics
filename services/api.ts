@@ -17,6 +17,7 @@ import {
 } from '../types';
 
 // Source of truth: services/config.ts -- set EXPO_PUBLIC_API_URL per build.
+import { appendLocalFile } from '../utils/formDataFile';
 import { API_BASE_URL, API_HOST } from './config';
 
 // Not under /deliveries -- the wallet blueprint is a top-level resource
@@ -250,13 +251,12 @@ class ApiService {
   /** Upload the rider's photo. Multipart, field `file`. */
   async uploadProfilePhoto(uri: string): Promise<string | null> {
     const form = new FormData();
-    const name = uri.split('/').pop() || 'photo.jpg';
-    const extension = name.split('.').pop()?.toLowerCase() || 'jpg';
-    form.append('file', {
-      uri,
-      name,
-      type: extension === 'png' ? 'image/png' : 'image/jpeg',
-    } as any);
+    // Not the React Native `{ uri, name, type }` part. Expo's fetch
+    // replaced RN's as the global, and its multipart converter rejects
+    // that shape outright -- every upload came back "Unsupported
+    // FormDataPart implementation" before the request was even sent.
+    // See utils/formDataFile.ts.
+    appendLocalFile(form, 'file', uri, uri.split('/').pop() || 'photo.jpg');
 
     const response = await fetch(`${API_BASE_URL}/partners/me/photo`, {
       method: 'POST',
