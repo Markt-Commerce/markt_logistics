@@ -294,30 +294,31 @@ export default function ActiveDeliverySheet({
                 wrong weight. The secondary action still shows. */}
             {((stop.onPrimaryAction && !isNext) || stop.onSecondaryAction) && (
               <View style={styles.stopActions}>
+                {/* A slider needs the full width to have any travel in
+                    it -- sharing a row with "Report issue" left a thumb
+                    with about forty pixels to cross, which is a tap
+                    with extra steps. So it goes on its own line and the
+                    secondary action sits above it. */}
                 {stop.onSecondaryAction && (
                   <Button
                     label={stop.secondaryActionLabel ?? 'Report issue'}
                     onPress={stop.onSecondaryAction}
                     variant="outline"
-                    style={{ flex: 1 }}
                   />
                 )}
                 {stop.onPrimaryAction && !isNext && (
                   stop.confirmBySlide ? (
-                    <View style={{ flex: 1 }}>
-                      <SlideToConfirm
-                        label={stop.primaryActionLabel ?? 'Slide to confirm'}
-                        loading={busyStopId === stop.id}
-                        onConfirm={() => runStopAction(stop)}
-                      />
-                    </View>
+                    <SlideToConfirm
+                      label={stop.primaryActionLabel ?? 'Slide to confirm'}
+                      loading={busyStopId === stop.id}
+                      onConfirm={() => runStopAction(stop)}
+                    />
                   ) : (
                     <Button
                       label={stop.primaryActionLabel ?? 'Continue'}
                       onPress={() => runStopAction(stop)}
                       loading={busyStopId === stop.id}
                       variant="secondary"
-                      style={{ flex: 1 }}
                     />
                   )
                 )}
@@ -484,7 +485,6 @@ const styles = StyleSheet.create({
   },
   stopTitleDone: { color: colors.textSecondary },
   stopActions: {
-    flexDirection: 'row',
     gap: 8,
     marginTop: 10,
     // Indented past the rail so the actions line up with the stop they

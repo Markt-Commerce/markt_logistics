@@ -30,14 +30,14 @@ export function assignmentToStops(assignment: Assignment, ctx: AssignmentStopsCo
   let pickupAction: (() => Promise<void>) | undefined;
   let pickupHint: string | undefined;
   if (step === null) {
-    pickupActionLabel = 'Arrived at pickup';
+    pickupActionLabel = 'Slide when you arrive';
     pickupAction = () => ctx.onStatusUpdate('ARRIVED_PICKUP');
     // What the tap means, not what the state is called. A rider who has
     // not done this before was given a button labelled with a status and
     // left to work out whether it was safe to press yet.
     pickupHint = 'Head to the shop. Tap this when you get there, and the shop is told you have arrived.';
   } else if (step === 'ARRIVED_PICKUP') {
-    pickupActionLabel = 'Confirm pickup';
+    pickupActionLabel = 'Slide to confirm pickup';
     pickupAction = () => ctx.onStatusUpdate('PICKED_UP');
     pickupHint = 'Check the parcel against the order before you confirm. Once you do, it is on you.';
   }
@@ -54,20 +54,18 @@ export function assignmentToStops(assignment: Assignment, ctx: AssignmentStopsCo
   let dropoffActionLabel: string | undefined;
   let dropoffAction: (() => Promise<void>) | undefined;
   let dropoffHint: string | undefined;
-  let dropoffBySlide = false;
   if (step === 'PICKED_UP') {
-    dropoffActionLabel = 'Head to buyer';
+    dropoffActionLabel = 'Slide when you set off';
     dropoffAction = () => ctx.onStatusUpdate('EN_ROUTE_TO_DROPOFF');
     dropoffHint = 'You have the parcel. Tap this when you set off and the buyer can follow you in.';
   } else if (step === 'EN_ROUTE_TO_DROPOFF') {
-    dropoffActionLabel = "I've arrived";
+    dropoffActionLabel = 'Slide when you arrive';
     dropoffAction = () => ctx.onStatusUpdate('DELIVERED_PENDING_QR');
     dropoffHint = 'Tap this at the door. The buyer gets their delivery code the moment you do.';
   } else if (step === 'DELIVERED_PENDING_QR') {
     dropoffActionLabel = 'Slide to confirm delivery';
     dropoffAction = async () => ctx.onGoToPodConfirm();
     dropoffHint = 'Ask the buyer for their code, or scan it. This is what releases your pay.';
-    dropoffBySlide = true;
   } else if (step === 'COMPLETED') {
     dropoffHint = 'Delivered and confirmed. Your earnings are on the way to your wallet.';
   }
@@ -92,6 +90,12 @@ export function assignmentToStops(assignment: Assignment, ctx: AssignmentStopsCo
       image: assignment.sellerImage,
       primaryActionLabel: pickupActionLabel,
       onPrimaryAction: pickupAction,
+      // Every step a rider reports is a swipe, not a tap. They are all
+      // being done one-handed, on a bike, at a gate or a stall counter,
+      // and each one tells the shop or the buyer something that is
+      // awkward to walk back -- a mis-tapped "I've arrived" sends
+      // somebody to their door.
+      confirmBySlide: true,
       hint: pickupHint,
     },
     {
@@ -104,7 +108,7 @@ export function assignmentToStops(assignment: Assignment, ctx: AssignmentStopsCo
       phone: assignment.buyerPhone,
       primaryActionLabel: dropoffActionLabel,
       onPrimaryAction: dropoffAction,
-      confirmBySlide: dropoffBySlide,
+      confirmBySlide: true,
       hint: dropoffHint,
     },
   ];
@@ -135,11 +139,11 @@ export function runToStops(run: RunDetail, ctx: RunStopsContext): DeliveryStop[]
     let onPrimaryAction: (() => Promise<void>) | undefined;
     let hint: string | undefined;
     if (stop.status === 'pending') {
-      primaryActionLabel = "I've arrived";
+      primaryActionLabel = 'Slide when you arrive';
       onPrimaryAction = () => ctx.onArrive(stop.seller_id);
       hint = 'Tap this at the shop. Stops can be done in any order -- take whichever is nearest.';
     } else if (stop.status === 'arrived') {
-      primaryActionLabel = 'Confirm pickup';
+      primaryActionLabel = 'Slide to confirm pickup';
       onPrimaryAction = () => ctx.onConfirmPickup(stop.seller_id);
       hint = 'Check the parcels against the order before you confirm.';
     }
@@ -153,6 +157,7 @@ export function runToStops(run: RunDetail, ctx: RunStopsContext): DeliveryStop[]
       status: stop.status,
       primaryActionLabel,
       onPrimaryAction,
+      confirmBySlide: true,
       hint,
     };
   });
@@ -163,11 +168,9 @@ export function runToStops(run: RunDetail, ctx: RunStopsContext): DeliveryStop[]
     let secondaryActionLabel: string | undefined;
     let onSecondaryAction: (() => void) | undefined;
     let hint: string | undefined;
-    let confirmBySlide = false;
     if (order.pod_status === 'qr_issued') {
       primaryActionLabel = 'Slide to confirm delivery';
       onPrimaryAction = async () => ctx.onGoToPodConfirm(order.order_id);
-      confirmBySlide = true;
       secondaryActionLabel = 'Report issue';
       onSecondaryAction = () => ctx.onGoToReportFailure(order.order_id);
       hint = 'Ask the buyer for their code, or scan it. This is what releases your pay for this drop.';
@@ -195,7 +198,7 @@ export function runToStops(run: RunDetail, ctx: RunStopsContext): DeliveryStop[]
       status: order.pod_status,
       primaryActionLabel,
       onPrimaryAction,
-      confirmBySlide,
+      confirmBySlide: true,
       secondaryActionLabel,
       onSecondaryAction,
       hint,

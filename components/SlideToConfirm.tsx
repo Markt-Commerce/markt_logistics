@@ -13,16 +13,17 @@ import Animated, {
 import { colors, typography } from './theme';
 
 /**
- * A deliberate action, for the one step that cannot be undone.
+ * A deliberate action, for every step a rider reports.
  *
- * Confirming delivery releases the parcel and the rider's pay, and it is
- * the last thing they do while holding a phone in one hand at somebody's
- * gate. A tap there is one mis-touch away from confirming a delivery
- * that has not happened -- and unlike every other step in this flow,
- * there is no transition back out of COMPLETED.
+ * All of them are done one-handed, on a bike, at a gate or a stall
+ * counter, and each one tells somebody else something that is awkward
+ * to walk back: a mis-tapped "I've arrived" sends a buyer to their door
+ * for nothing, a mis-tapped "confirm pickup" makes the rider
+ * responsible for a parcel still on the counter, and there is no
+ * transition back out of a confirmed delivery at all.
  *
- * Everything before it stays a tap. A slider on "I've arrived" would be
- * friction with nothing behind it.
+ * The gesture is the point. It costs a moment of deliberate attention
+ * in exchange for never firing by accident in a pocket or a glove.
  */
 
 const THUMB = 52;
