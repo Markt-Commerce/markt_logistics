@@ -109,6 +109,11 @@ export default function ActiveDeliveryScreen() {
           pathname: '/(delivery)/pod-scan',
           params: { mode: 'order', assignmentId: assignment.assignmentId, orderId: assignment.orderId },
         }),
+      onGoToReportFailure: () =>
+        router.push({
+          pathname: '/(delivery)/report-failure',
+          params: { mode: 'order', assignmentId: assignment.assignmentId, orderId: assignment.orderId },
+        }),
     });
     headerTitle = assignment.sellerName || `Order #${assignment.orderId.slice(0, 8)}`;
     headerSubtitle = assignment.pickupAddress ?? undefined;

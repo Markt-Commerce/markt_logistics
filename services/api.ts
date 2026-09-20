@@ -658,6 +658,32 @@ class ApiService {
     }
   }
 
+  /** A single-order delivery that could not be made.
+   *
+   * The run flow has had this since 10.7 and single orders had no
+   * failure path at all, so a rider at a door with nobody behind it
+   * could only mark it delivered or walk away. Keyed on the assignment
+   * rather than the order, because that is what identifies *this
+   * rider's* attempt at it. */
+  async reportAssignmentFailure(
+    assignmentId: string,
+    reason: DeliveryFailureReason,
+    notes?: string
+  ): Promise<void> {
+    const response = await fetch(
+      `${API_BASE_URL}/assignments/${assignmentId}/report-failure`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
+        body: JSON.stringify({ reason, notes }),
+      }
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data?.message || 'Could not report that.');
+    }
+  }
+
   async reportDeliveryFailure(
     runId: string,
     orderId: string,

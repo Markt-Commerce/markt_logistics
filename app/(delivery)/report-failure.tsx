@@ -37,29 +37,59 @@ const REASONS: { value: DeliveryFailureReason; label: string; description: strin
   },
 ];
 
-/** 10.7: typed delivery-failure reporting for one order within an
- * accepted run. Financial consequences differ by reason (who bears the
- * cost of redelivery/return/dispose), so the reason itself matters --
- * not just "it failed." */
+/** Typed delivery-failure reporting, for both delivery models.
+ *
+ * Financial consequences differ by reason -- who bears the cost of a
+ * redelivery, a return or a disposal -- so the reason itself matters,
+ * not just "it failed".
+ *
+ * `mode` picks which call to make, the same way pod-scan does. A run
+ * reports against the run and the order; a single order reports
+ * against the assignment, because that is what identifies this
+ * rider's attempt at it. */
 export default function ReportFailureScreen() {
   const router = useRouter();
-  const { runId, orderId } = useLocalSearchParams<{ runId: string; orderId: string }>();
+  const { mode, runId, orderId, assignmentId } = useLocalSearchParams<{
+    mode?: 'run' | 'order';
+    runId?: string;
+    orderId?: string;
+    assignmentId?: string;
+  }>();
+  const isOrderMode = mode === 'order';
   const [selected, setSelected] = useState<DeliveryFailureReason | null>(null);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
-    if (!runId || !orderId || !selected) return;
+    if (!selected) return;
+    if (isOrderMode ? !assignmentId : !runId || !orderId) return;
     setSubmitting(true);
     try {
-      await apiService.reportDeliveryFailure(runId, orderId, selected, notes || undefined);
       // Leave first, then say so. Navigating from inside the alert's
       // OK handler means not navigating at all when the alert is
       // dismissed another way -- an Android alert tapped outside of
       // fires nothing -- which left the rider on a form they had
       // already submitted, free to submit it again. Same fix as
       // pod-scan.
-      router.replace({ pathname: '/(delivery)/active-delivery', params: { kind: 'run', id: runId } });
+      if (isOrderMode) {
+        await apiService.reportAssignmentFailure(
+          assignmentId!,
+          selected,
+          notes || undefined
+        );
+        // Back to the dashboard, not to the delivery: reporting a
+        // single-order failure releases the assignment, so there is
+        // no longer a delivery to return to.
+        router.replace('/(delivery)/availability-toggle');
+        Alert.alert(
+          'Reported',
+          'This delivery has been logged as failed and is off your list.'
+        );
+        return;
+      }
+
+      await apiService.reportDeliveryFailure(runId!, orderId!, selected, notes || undefined);
+      router.replace({ pathname: '/(delivery)/active-delivery', params: { kind: 'run', id: runId! } });
       Alert.alert('Reported', 'The failed delivery has been logged.');
     } catch (error) {
       console.error('Error reporting failure:', error);
