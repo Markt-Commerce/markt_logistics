@@ -293,6 +293,23 @@ export default function ActiveDeliverySheet({
                 </Text>
                 {!!stop.subtitle && <Text style={styles.stopSubtitle}>{stop.subtitle}</Text>}
                 <StatusPill status={stop.status} />
+                {/* Which parcel is this one's. On a batched run the
+                    rider is carrying several bags from the same shop
+                    and the only thing distinguishing them was a name
+                    and an address -- neither of which is written on a
+                    bag. The single-order sheet shows this once at the
+                    top because there is only ever one. */}
+                {!!stop.parcel?.length && !done && (
+                  <View style={styles.stopParcel}>
+                    {stop.parcel.map((line, lineIndex) => (
+                      <Text key={`${line.name}-${lineIndex}`} style={styles.stopParcelLine}>
+                        {line.quantity}× {line.name}
+                        {line.variant ? ` · ${line.variant}` : ''}
+                      </Text>
+                    ))}
+                  </View>
+                )}
+
                 {/* Already shown against the button in the summary for
                     the next stop; here it explains the ones that are not
                     actionable yet, which otherwise just look broken. */}
@@ -543,6 +560,14 @@ const styles = StyleSheet.create({
   parcelLine: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   parcelQty: { ...typography.bodyBold, color: colors.primary, minWidth: 26 },
   parcelName: { ...typography.body, color: colors.textPrimary, flex: 1 },
+  stopParcel: {
+    marginTop: 8,
+    paddingLeft: 10,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.border,
+    gap: 2,
+  },
+  stopParcelLine: { ...typography.caption, color: colors.textPrimary },
   stopHint: {
     ...typography.caption,
     color: colors.textMuted,

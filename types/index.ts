@@ -106,6 +106,15 @@ export interface Order {
   dropoffArea?: string | null;
 }
 
+/** One line of what the rider is collecting. */
+export interface ParcelLine {
+  name: string;
+  quantity: number;
+  /** "Colour", "Size" -- the axis the buyer chose on, which is exactly
+   *  the mix-up a count can never catch. */
+  variant?: string | null;
+}
+
 // An assignment has two statuses, and this used to be written down here
 // as one. The note that replaced this one said a GET after a PATCH
 // "does return the real progress value" because marshmallow doesn't
@@ -121,15 +130,6 @@ export interface Order {
 // Driving the screen off `status` meant every reload re-offered the step
 // the rider had just finished, and the second tap was rejected by the
 // backend's transition check as an error they could do nothing about.
-/** One line of what the rider is collecting. */
-export interface ParcelLine {
-  name: string;
-  quantity: number;
-  /** "Colour", "Size" -- the axis the buyer chose on, which is exactly
-   *  the mix-up a count can never catch. */
-  variant?: string | null;
-}
-
 export interface Assignment {
   assignmentId: string;
   orderId: string;
@@ -225,6 +225,14 @@ export interface RunOrder {
   order_id: string;
   order_number: string | null;
   buyer_name: string | null;
+  /** A run's drops had no number, so a rider at the wrong gate on a
+   *  batched delivery could not call anyone -- while the same rider on
+   *  a single order could. */
+  buyer_phone?: string | null;
+  /** Which parcel is whose. A rider carrying four bags from one shop
+   *  had a name and an address and nothing tying either to the bag in
+   *  their hand. */
+  items?: ParcelLine[];
   delivery_address: RunOrderAddress | null;
   pod_status: RunOrderPodStatus;
   delivered_at: string | null;
@@ -285,6 +293,10 @@ export interface DeliveryStop {
   /** The shop's picture, so a rider is looking for a storefront rather
    *  than reading a name off a list. Pickup stops only. */
   image?: string | null;
+  /** What is in this particular parcel. On a batched run every drop
+   *  carries its own, because that is the whole question a rider with
+   *  four bags in a box is asking. */
+  parcel?: ParcelLine[];
   /** Confirmed by a deliberate swipe rather than a tap.
    *
    *  Set on every step a rider reports. They are all done one-handed,
