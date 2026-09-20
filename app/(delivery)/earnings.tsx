@@ -1,7 +1,8 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import BottomSheet, { BottomSheetScrollView, BottomSheetTextInput, BottomSheetView } from '@gorhom/bottom-sheet';
+import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../../components/Button';
@@ -100,6 +101,9 @@ export default function EarningsScreen() {
   const [banks, setBanks] = useState<Bank[]>([]);
   const [banksLoading, setBanksLoading] = useState(false);
   const [bankQuery, setBankQuery] = useState('');
+  // The tab bar is drawn over the sheet. Read from context rather than
+  // useBottomTabBarHeight() so this still renders outside the tabs.
+  const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const [withdrawStep, setWithdrawStep] = useState<WithdrawStep>('bank');
   const [selectedBank, setSelectedBank] = useState<Bank | null>(null);
   const [accountNumber, setAccountNumber] = useState('');
@@ -447,7 +451,20 @@ export default function EarningsScreen() {
         onClose={resetWithdrawForm}
       >
         {withdrawStep === 'bank' ? (
-          <BottomSheetView style={styles.sheetHeader}>
+          // The scrollable is the sheet's own child, with the title and
+          // search stuck to the top. Wrapped in a BottomSheetView this
+          // could not scroll at all: that component's container is
+          // `position: absolute` with no bottom and no height, so a
+          // `flex: 1` scrollable inside it lays out at full content
+          // height and overflows instead of scrolling -- with 284 banks
+          // that is most of the list unreachable.
+          <BottomSheetScrollView
+            style={{ flex: 1 }}
+            stickyHeaderIndices={[0]}
+            contentContainerStyle={{ paddingBottom: tabBarHeight + 24 }}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.sheetStickyHead}>
             <Text style={styles.sheetTitle}>Choose your bank</Text>
 
             {/* 284 banks, alphabetically. Without this the list opens on
@@ -471,20 +488,17 @@ export default function EarningsScreen() {
               )}
             </View>
 
+            </View>
+
             {banksLoading ? (
               <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />
             ) : (
               // Not BottomSheetFlatList. Under Reanimated 4 it is an
-              // Animated-wrapped FlatList and it throws on render here;
-              // the ScrollView-based sheets elsewhere in this app are
-              // fine. The list is filtered by the search above, and a
-              // few hundred one-line rows is well within what a
-              // ScrollView handles.
-              <BottomSheetScrollView
-                style={{ flex: 1 }}
-                contentContainerStyle={{ paddingBottom: 20 }}
-                keyboardShouldPersistTaps="handled"
-              >
+              // Animated-wrapped FlatList and it throws on render here.
+              // The list is filtered by the search above, and a few
+              // hundred one-line rows is well within what a ScrollView
+              // handles.
+              <View style={styles.bankList}>
                 {visibleBanks.length === 0 ? (
                   <Text style={styles.bankEmpty}>
                     No bank matches “{bankQuery.trim()}”.
@@ -518,9 +532,9 @@ export default function EarningsScreen() {
                     </TouchableOpacity>
                   ))
                 )}
-              </BottomSheetScrollView>
+              </View>
             )}
-          </BottomSheetView>
+          </BottomSheetScrollView>
         ) : (
           <BottomSheetView style={styles.sheetHeader}>
             <TouchableOpacity onPress={() => setWithdrawStep('bank')} style={styles.backRow}>
@@ -731,6 +745,14 @@ const styles = StyleSheet.create({
   txCredit: { color: colors.success },
   txDebit: { color: colors.textPrimary },
   sheetHeader: { flex: 1, paddingHorizontal: 20, paddingTop: 8 },
+  // Opaque, because it is stuck to the top of a list scrolling under it.
+  sheetStickyHead: {
+    backgroundColor: colors.background,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  bankList: { paddingHorizontal: 20 },
   sheetTitle: { ...typography.subtitle, color: colors.textPrimary, marginBottom: 12 },
   searchRow: {
     flexDirection: 'row',
