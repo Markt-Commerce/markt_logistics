@@ -603,13 +603,29 @@ class ApiService {
     }
   }
 
-  async failRun(runId: string, reason?: string): Promise<void> {
+  /** Give up a run.
+   *
+   * `recovery_needed` tells the two cases apart. Before the first
+   * pickup the run just goes back on the board for somebody else.
+   * After it, the rider is holding parcels, so the run is held for
+   * recovery rather than reopened -- and the rider needs telling that
+   * what they are carrying is somebody's problem to collect, not
+   * theirs to keep. */
+  async failRun(
+    runId: string,
+    reason?: string
+  ): Promise<{ recoveryNeeded: boolean }> {
     try {
-      await fetch(`${API_BASE_URL}/runs/${runId}/fail`, {
+      const response = await fetch(`${API_BASE_URL}/runs/${runId}/fail`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
         body: JSON.stringify({ reason }),
       });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.message || 'Could not give up that run.');
+      }
+      return { recoveryNeeded: !!data?.recovery_needed };
     } catch (error) {
       console.error('failRun failed:', error);
       throw error;

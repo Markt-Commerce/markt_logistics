@@ -54,10 +54,17 @@ export default function ActiveDeliveryScreen() {
     load();
   };
 
-  const handleFailRun = (runId: string) => {
+  const handleFailRun = (runId: string, carrying: boolean) => {
+    // Two different acts behind one button. Before the first pickup
+    // this hands the run to somebody else and nothing has moved. Once
+    // the rider has collected, they are holding a stranger's shopping
+    // -- the run cannot just be passed on, and the warning should not
+    // pretend it can.
     Alert.alert(
       "Can't continue this run?",
-      'This reopens the run for another rider to pick up. Only use this if you genuinely cannot continue (breakdown, emergency, etc).',
+      carrying
+        ? 'You are already carrying parcels from this run. It will not go to another rider until someone collects them from you, and we will be in touch about that. Only use this if you genuinely cannot continue.'
+        : 'This reopens the run for another rider to pick up. Only use this if you genuinely cannot continue (breakdown, emergency, etc).',
       [
         { text: 'Never mind', style: 'cancel' },
         {
@@ -65,11 +72,17 @@ export default function ActiveDeliveryScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await apiService.failRun(runId);
+              const { recoveryNeeded } = await apiService.failRun(runId);
               router.replace('/(delivery)/availability-toggle');
-            } catch (error) {
+              Alert.alert(
+                recoveryNeeded ? 'Someone will be in touch' : 'Run released',
+                recoveryNeeded
+                  ? 'Hold on to the parcels you collected. We will arrange to take them off you.'
+                  : 'The run is back on the board for another rider.'
+              );
+            } catch (error: any) {
               console.error('Error failing run:', error);
-              Alert.alert('Could not update', 'Please try again.');
+              Alert.alert('Could not update', error?.message || 'Please try again.');
             }
           },
         },
@@ -140,7 +153,10 @@ export default function ActiveDeliveryScreen() {
     screenActions = {
       ...screenActions,
       dangerActionLabel: "I can't continue this run",
-      onDangerAction: () => handleFailRun(runId),
+      // Whether anything has actually left a shop -- the same test the
+      // server applies, so the warning matches what will happen.
+      onDangerAction: () =>
+        handleFailRun(runId, run.stops.some((stop) => stop.status === 'picked_up')),
     };
   }
 
