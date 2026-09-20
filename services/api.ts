@@ -487,7 +487,20 @@ class ApiService {
   // above (buyers choose one or the other at checkout; see
   // REFACTOR_NOTES.md) -- both are live and neither is going away.
 
-  async getAvailableRuns(searchRadius = 5000): Promise<AvailableRun[]> {
+  /** 15km, not the backend's 5km default.
+   *
+   * A run's distance is measured from its *area centroid*, not from any
+   * real pickup -- get_available_runs says so in as many words. So the
+   * number being compared against is already coarse: a run collecting
+   * two streets from the rider can measure six kilometres away because
+   * that is where the middle of the area happens to be.
+   *
+   * Ibadan is about twenty kilometres across, and a rider sitting in
+   * Akobo could not see a run whose area centroid was the University --
+   * a trip they would happily take. Single orders keep the tighter
+   * default, because those measure from the actual shop.
+   */
+  async getAvailableRuns(searchRadius = 15000): Promise<AvailableRun[]> {
     try {
       const response = await fetch(
         `${API_BASE_URL}/runs/available?search_radius=${searchRadius}`,
