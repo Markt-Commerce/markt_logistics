@@ -1,0 +1,42 @@
+# Build production for both stores and submit them.
+#
+#   npm run release:bump -- minor      # or major / patch; commit + push it
+#   npx eas-cli workflow:run .eas/workflows/release.yml
+#
+# Once Google and Apple have approved and published the builds, run
+# announce.yml so installed apps start prompting for the update.
+name: Release
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build_android:
+    name: Build Android
+    type: build
+    params:
+      platform: android
+      profile: production
+
+  build_ios:
+    name: Build iOS
+    type: build
+    params:
+      platform: ios
+      profile: production
+
+  submit_android:
+    name: Submit to Google Play
+    needs: [build_android]
+    type: submit
+    params:
+      build_id: ${{ needs.build_android.outputs.build_id }}
+      profile: production
+
+  submit_ios:
+    name: Submit to App Store Connect
+    needs: [build_ios]
+    type: submit
+    params:
+      build_id: ${{ needs.build_ios.outputs.build_id }}
+      profile: production

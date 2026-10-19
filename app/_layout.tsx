@@ -6,6 +6,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, useAuth } from '../contexts/auth';
 import { colors } from '../components/theme';
+import UpdateGate from '../components/UpdateGate';
 import { routeForNotification } from '../services/notifications';
 
 SplashScreen.preventAutoHideAsync();
@@ -72,6 +73,9 @@ export default function RootLayout() {
       <AuthProvider>
         <RootLayoutNav />
       </AuthProvider>
+      {/* Outside AuthProvider: an unsupported build is blocked whether or not
+          a rider is signed in. */}
+      <UpdateGate />
     </GestureHandlerRootView>
   );
 }

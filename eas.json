@@ -8,6 +8,7 @@
       "developmentClient": true,
       "distribution": "internal",
       "environment": "development",
+      "node": "24.15.0",
       "android": {
         "buildType": "apk"
       },
@@ -16,10 +17,12 @@
       }
     },
     "preview": {
+      "distribution": "internal",
+      "environment": "preview",
+      "node": "24.15.0",
       "android": {
         "buildType": "apk"
       },
-      "node": "24.15.0",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://test.api.marktcommerce.com"
       }
@@ -27,12 +30,25 @@
     "production": {
       "autoIncrement": true,
       "environment": "production",
+      "node": "24.15.0",
+      "android": {
+        "buildType": "app-bundle"
+      },
       "env": {
-        "EXPO_PUBLIC_API_URL": "SET_ME_BEFORE_RELEASE"
+        "EXPO_PUBLIC_API_URL": "https://api.marktcommerce.com"
       }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "draft"
+      },
+      "ios": {
+        "appleId": "marktcommerce2020@gmail.com",
+        "appleTeamId": "AU56ZMM56Y"
+      }
+    }
   }
 }

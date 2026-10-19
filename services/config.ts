@@ -14,9 +14,9 @@
 
 const CONFIGURED = process.env.EXPO_PUBLIC_API_URL;
 
-/** The placeholder eas.json's production profile carries. It is deliberately
- *  not a hostname: no production URL exists in either repo yet, and inventing
- *  one is how a release ships pointing at nothing. */
+/** The placeholder eas.json's production profile used to carry before the
+ *  production host was set. Still recognised, so a profile that goes back to
+ *  it is flagged rather than quietly falling through to test. */
 const UNSET = "SET_ME_BEFORE_RELEASE";
 
 export const API_HOST =

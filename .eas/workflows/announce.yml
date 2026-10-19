@@ -1,0 +1,42 @@
+# Tell installed apps a new version is live (Firebase Remote Config).
+# Run only after the store has published the release.
+#
+#   npx eas-cli workflow:run .eas/workflows/announce.yml -F mode=auto -F platform=all
+#
+# mode: auto     = blocking update only if the major version went up
+#       soft     = dismissible prompt only
+#       required = blocking update regardless
+#
+# Needs FIREBASE_SERVICE_ACCOUNT in the EAS "production" environment (a secret
+# or file variable holding the service account JSON). See scripts/release.mjs.
+name: Announce version
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        options: [auto, soft, required]
+        default: auto
+      platform:
+        type: choice
+        options: [all, android, ios]
+        default: all
+
+jobs:
+  announce:
+    name: Publish version to Remote Config
+    environment: production
+    env:
+      MODE: ${{ inputs.mode }}
+      PLATFORM: ${{ inputs.platform }}
+    steps:
+      - uses: eas/checkout
+      - name: Announce
+        run: |
+          case "$MODE" in
+            soft) FLAG=--soft ;;
+            required) FLAG=--required ;;
+            *) FLAG= ;;
+          esac
+          node scripts/release.mjs announce --platform "$PLATFORM" $FLAG

@@ -4,7 +4,9 @@
 // iOS uses native Apple Maps (no key needed) -- see REFACTOR_NOTES.md.
 module.exports = {
   expo: {
-    name: 'markt-logistics',
+    // Display name: home screen label and the default store listing title.
+    // The slug stays as-is -- it is what links this project to EAS.
+    name: 'Logistics',
     slug: 'markt-logistics',
     version: '1.0.0',
     orientation: 'portrait',
@@ -16,6 +18,11 @@ module.exports = {
       // Required for an iOS build at all, and it is what the APNs
       // credentials attach to. Matches the Android package's shape.
       bundleIdentifier: 'com.marktcommerce.marktlogistics',
+      infoPlist: {
+        // HTTPS only, no custom crypto -- answers App Store Connect's export
+        // compliance question up front so every upload isn't held for it.
+        ITSAppUsesNonExemptEncryption: false,
+      },
     },
     android: {
       // Without this, the committed google-services.json is just a file in
