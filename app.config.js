@@ -37,7 +37,12 @@ module.exports = {
         monochromeImage: './assets/images/android-icon-monochrome.png',
       },
       predictiveBackGestureEnabled: false,
-      permissions: ['android.permission.CAMERA', 'android.permission.RECORD_AUDIO'],
+      permissions: ['android.permission.CAMERA'],
+      // Nothing in the app records audio, and an undeclared-use microphone
+      // permission is something Play review asks you to justify. Blocked
+      // here as well as switched off on expo-camera below, because any
+      // library's manifest can merge it back in.
+      blockedPermissions: ['android.permission.RECORD_AUDIO'],
       package: 'com.marktcommerce.marktlogistics',
       config: {
         googleMaps: {
@@ -75,6 +80,10 @@ module.exports = {
         'expo-camera',
         {
           cameraPermission: 'Allow Markt Logistics to use your camera to scan delivery codes.',
+          // The camera only scans QR codes. Without these the plugin adds
+          // RECORD_AUDIO on Android and a microphone prompt on iOS by default.
+          microphonePermission: false,
+          recordAudioAndroid: false,
         },
       ],
       [
